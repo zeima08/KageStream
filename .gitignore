@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+build/
+dist/
+AppDir/
+
+*.AppImage
+*.exe
+
+.venv/
+venv/
+.env
+
+# Tests
+.pytest_cache/
+
+.idea/
+.vscode/
+
+*.log
+
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db

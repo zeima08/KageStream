@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=GUIStream
+Comment=Graphical Streamlink recorder
+Exec=GUIStream
+Icon=GUIStream
+Categories=AudioVideo;Recorder;
+Terminal=false
