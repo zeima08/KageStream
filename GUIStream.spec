@@ -2,10 +2,10 @@
 
 
 a = Analysis(
-    ['/home/zeima/Téléchargements/guistream_project/guistream.py'],
+    ['/home/zeima/Documents/perso/GuiStream-source/guistream.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('/home/zeima/Documents/perso/GuiStream-source/assets', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
