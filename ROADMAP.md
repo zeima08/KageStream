@@ -34,7 +34,7 @@ GUIStream possède actuellement les fondations suivantes :
 - **Priorité moyenne** : amélioration importante mais non bloquante.
 - **Priorité basse** : évolution à étudier après stabilisation.
 
-## Version 0.5.1 — Consolidation
+## Version 0.6 — Consolidation
 
 Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter de nouveaux modes complexes.
 
