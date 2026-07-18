@@ -819,7 +819,7 @@ class GUIStream(Gtk.Window):
     def __init__(self):
         super().__init__(title=APP_TITLE)
 
-        self.set_default_size(1040, 760)
+        self.set_default_size(1100, 820)
 
         self.process = None
         self.user_stopped = False
@@ -842,6 +842,8 @@ class GUIStream(Gtk.Window):
         self.last_health_report = "Aucun enregistrement analysé."
 
         self.streamlink = None
+        self.streamlink_version = ""
+        self.streamlink_version_path = None
         self.ffmpeg = None
         self.ffprobe = None
         self.ytdlp = None
@@ -866,29 +868,49 @@ class GUIStream(Gtk.Window):
         self.status = Gtk.Label(label="Prêt.", xalign=0)
         main.pack_start(self.status, False, False, 0)
 
+        self.notebook = Gtk.Notebook()
+        self.notebook.set_scrollable(True)
+        self.notebook.connect("switch-page", self.on_tab_changed)
+        main.pack_start(self.notebook, False, False, 0)
+
+        # Onglet Flux & IPTV : Streamlink, Twitch et sources directes FFmpeg.
+        stream_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        stream_page.set_border_width(12)
+
+        stream_intro = Gtk.Label(
+            label="Twitch, IPTV, HLS, MPEG-TS et autres sources compatibles Streamlink ou FFmpeg.",
+            xalign=0
+        )
+        stream_intro.set_line_wrap(True)
+        stream_page.pack_start(stream_intro, False, False, 0)
+
         self.url_entry = Gtk.Entry()
-        self.url_entry.set_placeholder_text("Colle ton lien ici...")
-        main.pack_start(self.url_entry, False, False, 0)
+        self.url_entry.set_placeholder_text("Colle un lien Twitch, IPTV, HLS ou MPEG-TS...")
+        self.url_entry.connect("changed", self.on_stream_url_changed)
+        stream_page.pack_start(self.url_entry, False, False, 0)
 
-        grid = Gtk.Grid(column_spacing=12, row_spacing=10)
-        main.pack_start(grid, False, False, 0)
-
-        self.source_mode = Gtk.ComboBoxText()
-        self.source_mode.append("auto", "Automatique")
-        self.source_mode.append("youtube_video", "Télécharger une vidéo YouTube")
-        self.source_mode.append("youtube_live", "Live YouTube — à partir de maintenant")
-        self.source_mode.append("youtube_live_start", "Live YouTube — depuis le début (expérimental)")
-        self.source_mode.append("classic", "Streamlink / flux direct")
-        self.source_mode.set_active_id("auto")
+        stream_grid = Gtk.Grid(column_spacing=14, row_spacing=10)
+        stream_page.pack_start(stream_grid, False, False, 0)
 
         self.quality = Gtk.ComboBoxText()
         self.quality.append_text("best")
         self.quality.set_active(0)
 
+        self.twitch_codec_preference = Gtk.ComboBoxText()
+        self.twitch_codec_preference.append("h264", "H.264 uniquement — compatibilité maximale")
+        self.twitch_codec_preference.append("av1", "H.264 + AV1 — hautes qualités autorisées")
+        self.twitch_codec_preference.append("all", "Tous — H.264, HEVC et AV1")
+        self.twitch_codec_preference.set_active_id("h264")
+        self.twitch_codec_preference.set_sensitive(False)
+
+        self.stream_profile = Gtk.ComboBoxText()
+        self.stream_profile.append("copy", "Original — sans conversion, recommandé")
+        self.stream_profile.append("h264_aac", "Convertir après capture — H.264 + AAC")
+        self.stream_profile.append("av1_opus", "Convertir après capture — AV1 + Opus (lent)")
+        self.stream_profile.set_active_id("copy")
+        self.stream_profile.connect("changed", self.on_stream_profile_changed)
+
         self.output_format = Gtk.ComboBoxText()
-        for fmt in ["ts", "mkv", "mp4"]:
-            self.output_format.append_text(fmt)
-        self.output_format.set_active(0)
 
         self.filename = Gtk.Entry()
         self.filename.set_placeholder_text("Nom du fichier sans extension — optionnel")
@@ -899,31 +921,59 @@ class GUIStream(Gtk.Window):
         )
         self.folder.set_filename(os.getcwd())
 
-        grid.attach(Gtk.Label(label="Mode", xalign=0), 0, 0, 1, 1)
-        grid.attach(self.source_mode, 1, 0, 1, 1)
+        self.twitch_codec_label = Gtk.Label(label="Codecs vidéo Twitch (Streamlink 8+)", xalign=0)
+        stream_grid.attach(Gtk.Label(label="Qualité du flux", xalign=0), 0, 0, 1, 1)
+        stream_grid.attach(self.quality, 1, 0, 1, 1)
+        stream_grid.attach(self.twitch_codec_label, 0, 1, 1, 1)
+        stream_grid.attach(self.twitch_codec_preference, 1, 1, 1, 1)
+        stream_grid.attach(Gtk.Label(label="Traitement final", xalign=0), 0, 2, 1, 1)
+        stream_grid.attach(self.stream_profile, 1, 2, 1, 1)
+        stream_grid.attach(Gtk.Label(label="Conteneur final", xalign=0), 0, 3, 1, 1)
+        stream_grid.attach(self.output_format, 1, 3, 1, 1)
+        stream_grid.attach(Gtk.Label(label="Nom du fichier", xalign=0), 0, 4, 1, 1)
+        stream_grid.attach(self.filename, 1, 4, 1, 1)
+        stream_grid.attach(Gtk.Label(label="Dossier", xalign=0), 0, 5, 1, 1)
+        stream_grid.attach(self.folder, 1, 5, 1, 1)
 
-        grid.attach(Gtk.Label(label="Qualité du flux", xalign=0), 0, 1, 1, 1)
-        grid.attach(self.quality, 1, 1, 1, 1)
+        stream_help = Gtk.Label(
+            label=(
+                "La préférence de codec source ne concerne que Twitch. Pour l’IPTV, GUIStream "
+                "conserve le codec reçu. Les profils H.264/AAC et AV1/Opus sont convertis après "
+                "la capture afin de protéger l’enregistrement en direct."
+            ),
+            xalign=0
+        )
+        stream_help.set_line_wrap(True)
+        stream_page.pack_start(stream_help, False, False, 0)
 
-        grid.attach(Gtk.Label(label="Format du flux", xalign=0), 0, 2, 1, 1)
-        grid.attach(self.output_format, 1, 2, 1, 1)
+        self.notebook.append_page(stream_page, Gtk.Label(label="Flux & IPTV"))
 
-        grid.attach(Gtk.Label(label="Nom du fichier", xalign=0), 0, 3, 1, 1)
-        grid.attach(self.filename, 1, 3, 1, 1)
+        # Onglet YouTube : interface yt-dlp indépendante des flux classiques.
+        youtube_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        youtube_page.set_border_width(12)
 
-        grid.attach(Gtk.Label(label="Dossier", xalign=0), 0, 4, 1, 1)
-        grid.attach(self.folder, 1, 4, 1, 1)
+        youtube_intro = Gtk.Label(
+            label="Vidéos, premières et lives YouTube avec yt-dlp.",
+            xalign=0
+        )
+        youtube_page.pack_start(youtube_intro, False, False, 0)
 
-        youtube_expander = Gtk.Expander(label="Options YouTube / yt-dlp")
-        youtube_expander.set_expanded(True)
-        main.pack_start(youtube_expander, False, False, 0)
+        self.youtube_url_entry = Gtk.Entry()
+        self.youtube_url_entry.set_placeholder_text("Colle un lien YouTube...")
+        youtube_page.pack_start(self.youtube_url_entry, False, False, 0)
 
         youtube_grid = Gtk.Grid(column_spacing=12, row_spacing=8)
         youtube_grid.set_margin_top(8)
         youtube_grid.set_margin_bottom(4)
         youtube_grid.set_margin_start(8)
         youtube_grid.set_margin_end(8)
-        youtube_expander.add(youtube_grid)
+        youtube_page.pack_start(youtube_grid, False, False, 0)
+
+        self.source_mode = Gtk.ComboBoxText()
+        self.source_mode.append("youtube_video", "Télécharger une vidéo YouTube")
+        self.source_mode.append("youtube_live", "Live YouTube — à partir de maintenant")
+        self.source_mode.append("youtube_live_start", "Live YouTube — depuis le début (expérimental)")
+        self.source_mode.set_active_id("youtube_video")
 
         self.youtube_resolution = Gtk.ComboBoxText()
         for value, label in [
@@ -951,12 +1001,27 @@ class GUIStream(Gtk.Window):
         self.youtube_subtitles.append("en", "Anglais (en)")
         self.youtube_subtitles.set_active_id("none")
 
-        youtube_grid.attach(Gtk.Label(label="Résolution maximale", xalign=0), 0, 0, 1, 1)
-        youtube_grid.attach(self.youtube_resolution, 1, 0, 1, 1)
-        youtube_grid.attach(Gtk.Label(label="Conteneur final", xalign=0), 0, 1, 1, 1)
-        youtube_grid.attach(self.youtube_container, 1, 1, 1, 1)
-        youtube_grid.attach(Gtk.Label(label="Sous-titres", xalign=0), 0, 2, 1, 1)
-        youtube_grid.attach(self.youtube_subtitles, 1, 2, 1, 1)
+        self.youtube_filename = Gtk.Entry()
+        self.youtube_filename.set_placeholder_text("Nom du fichier sans extension — titre automatique si vide")
+
+        self.youtube_folder = Gtk.FileChooserButton(
+            title="Choisir le dossier YouTube",
+            action=Gtk.FileChooserAction.SELECT_FOLDER
+        )
+        self.youtube_folder.set_filename(os.getcwd())
+
+        youtube_grid.attach(Gtk.Label(label="Type", xalign=0), 0, 0, 1, 1)
+        youtube_grid.attach(self.source_mode, 1, 0, 1, 1)
+        youtube_grid.attach(Gtk.Label(label="Résolution maximale", xalign=0), 0, 1, 1, 1)
+        youtube_grid.attach(self.youtube_resolution, 1, 1, 1, 1)
+        youtube_grid.attach(Gtk.Label(label="Conteneur final", xalign=0), 0, 2, 1, 1)
+        youtube_grid.attach(self.youtube_container, 1, 2, 1, 1)
+        youtube_grid.attach(Gtk.Label(label="Sous-titres", xalign=0), 0, 3, 1, 1)
+        youtube_grid.attach(self.youtube_subtitles, 1, 3, 1, 1)
+        youtube_grid.attach(Gtk.Label(label="Nom du fichier", xalign=0), 0, 4, 1, 1)
+        youtube_grid.attach(self.youtube_filename, 1, 4, 1, 1)
+        youtube_grid.attach(Gtk.Label(label="Dossier", xalign=0), 0, 5, 1, 1)
+        youtube_grid.attach(self.youtube_folder, 1, 5, 1, 1)
 
         youtube_help = Gtk.Label(
             label=(
@@ -966,10 +1031,10 @@ class GUIStream(Gtk.Window):
             xalign=0
         )
         youtube_help.set_line_wrap(True)
-        youtube_grid.attach(youtube_help, 0, 3, 3, 1)
+        youtube_grid.attach(youtube_help, 0, 6, 3, 1)
 
         youtube_checks = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        youtube_grid.attach(youtube_checks, 2, 0, 1, 3)
+        youtube_grid.attach(youtube_checks, 2, 0, 1, 6)
 
         self.youtube_auto_subs = Gtk.CheckButton(label="Inclure les sous-titres automatiques")
         self.youtube_embed_subs = Gtk.CheckButton(label="Intégrer les sous-titres à la vidéo")
@@ -991,26 +1056,78 @@ class GUIStream(Gtk.Window):
         ]:
             youtube_checks.pack_start(checkbox, False, False, 0)
 
+        self.notebook.append_page(youtube_page, Gtk.Label(label="YouTube"))
+
+        # Onglet listes locales. Le navigateur détaillé reste dans sa grande fenêtre dédiée.
+        playlist_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        playlist_page.set_border_width(18)
+
+        playlist_title = Gtk.Label(xalign=0)
+        playlist_title.set_markup("<b>Listes M3U, M3U8 et XSPF</b>")
+        playlist_page.pack_start(playlist_title, False, False, 0)
+
+        self.playlist_summary_label = Gtk.Label(
+            label="GUIStream recherche les listes placées à côté de l’AppImage ou du script.",
+            xalign=0
+        )
+        self.playlist_summary_label.set_line_wrap(True)
+        playlist_page.pack_start(self.playlist_summary_label, False, False, 0)
+
+        playlist_path = Gtk.Label(label=external_app_dir(), xalign=0)
+        playlist_path.set_selectable(True)
+        playlist_path.set_line_wrap(True)
+        playlist_page.pack_start(playlist_path, False, False, 0)
+
+        self.playlist_button = Gtk.Button(label="Ouvrir les listes locales")
+        self.playlist_button.connect("clicked", self.show_local_playlists)
+        playlist_page.pack_start(self.playlist_button, False, False, 0)
+
+        playlist_refresh_button = Gtk.Button(label="Actualiser la détection")
+        playlist_refresh_button.connect(
+            "clicked", lambda *_args: self.refresh_local_playlist_files(log_result=True)
+        )
+        playlist_page.pack_start(playlist_refresh_button, False, False, 0)
+
+        self.notebook.append_page(playlist_page, Gtk.Label(label="Listes locales"))
+
+        # Onglet outils : diagnostic et gestionnaire de dépendances.
+        tools_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        tools_page.set_border_width(18)
+
+        tools_title = Gtk.Label(xalign=0)
+        tools_title.set_markup("<b>Diagnostic et dépendances</b>")
+        tools_page.pack_start(tools_title, False, False, 0)
+
+        tools_help = Gtk.Label(
+            label=(
+                "Contrôle les versions détectées ou installe directement yt-dlp, Deno, "
+                "Streamlink, FFmpeg et FFprobe sans pacman."
+            ),
+            xalign=0
+        )
+        tools_help.set_line_wrap(True)
+        tools_page.pack_start(tools_help, False, False, 0)
+
+        self.diagnostic_button = Gtk.Button(label="Ouvrir le diagnostic")
+        self.diagnostic_button.connect("clicked", self.show_diagnostic)
+        tools_page.pack_start(self.diagnostic_button, False, False, 0)
+
+        self.update_button = Gtk.Button(label="Dépendances et mises à jour")
+        self.update_button.connect("clicked", self.show_update_checker)
+        tools_page.pack_start(self.update_button, False, False, 0)
+
+        self.notebook.append_page(tools_page, Gtk.Label(label="Outils"))
+
+        self.on_stream_profile_changed(self.stream_profile)
+
         buttons = Gtk.Box(spacing=8)
         main.pack_start(buttons, False, False, 0)
 
-        self.test_button = Gtk.Button(label="Tester le lien")
+        self.test_button = Gtk.Button(label="Tester le flux")
         self.test_button.connect("clicked", self.test_link)
         buttons.pack_start(self.test_button, True, True, 0)
 
-        self.playlist_button = Gtk.Button(label="Listes locales")
-        self.playlist_button.connect("clicked", self.show_local_playlists)
-        buttons.pack_start(self.playlist_button, True, True, 0)
-
-        self.diagnostic_button = Gtk.Button(label="Diagnostic")
-        self.diagnostic_button.connect("clicked", self.show_diagnostic)
-        buttons.pack_start(self.diagnostic_button, True, True, 0)
-
-        self.update_button = Gtk.Button(label="Mises à jour")
-        self.update_button.connect("clicked", self.show_update_checker)
-        buttons.pack_start(self.update_button, True, True, 0)
-
-        self.start_button = Gtk.Button(label="▶ Télécharger / enregistrer")
+        self.start_button = Gtk.Button(label="▶ Enregistrer le flux")
         self.start_button.connect("clicked", self.start_recording)
         buttons.pack_start(self.start_button, True, True, 0)
 
@@ -1035,8 +1152,152 @@ class GUIStream(Gtk.Window):
         self.log.set_monospace(True)
 
         scroll = Gtk.ScrolledWindow()
+        scroll.set_min_content_height(105)
         scroll.add(self.log)
-        main.pack_start(scroll, True, True, 0)
+
+        log_expander = Gtk.Expander(label="Journal technique")
+        log_expander.set_expanded(True)
+        log_expander.add(scroll)
+        main.pack_start(log_expander, True, True, 0)
+
+    def active_context(self):
+        page = self.notebook.get_current_page()
+        if page == 1:
+            return "youtube"
+        if page == 2:
+            return "playlists"
+        if page == 3:
+            return "tools"
+        return "stream"
+
+    def current_url_entry(self):
+        return self.youtube_url_entry if self.active_context() == "youtube" else self.url_entry
+
+    def current_source_mode(self):
+        if self.active_context() == "youtube":
+            return self.source_mode.get_active_id() or "youtube_video"
+        return "classic"
+
+    def current_folder(self):
+        chooser = self.youtube_folder if self.active_context() == "youtube" else self.folder
+        return chooser.get_filename() or os.getcwd()
+
+    def current_filename_entry(self):
+        return self.youtube_filename if self.active_context() == "youtube" else self.filename
+
+    def current_output_format(self):
+        if self.active_context() == "youtube":
+            return self.youtube_container.get_active_id() or "mkv"
+        return self.output_format.get_active_id() or "ts"
+
+    def on_tab_changed(self, notebook, page, page_num):
+        if not hasattr(self, "test_button"):
+            return
+
+        if page_num == 0:
+            self.test_button.set_label("Tester le flux")
+            self.start_button.set_label("▶ Enregistrer le flux")
+        elif page_num == 1:
+            self.test_button.set_label("Analyser YouTube")
+            self.start_button.set_label("▶ Télécharger / enregistrer")
+        else:
+            self.test_button.set_label("Test indisponible ici")
+            self.start_button.set_label("Enregistrement indisponible ici")
+
+        self.refresh_action_buttons()
+
+    def refresh_action_buttons(self):
+        if not hasattr(self, "test_button"):
+            return False
+
+        if self.process:
+            self.test_button.set_sensitive(False)
+            self.start_button.set_sensitive(False)
+            self.stop_button.set_sensitive(True)
+            return False
+
+        context = self.active_context()
+        if context == "stream":
+            available = bool(self.streamlink or self.ffmpeg)
+            self.test_button.set_sensitive(available)
+            self.start_button.set_sensitive(available)
+        elif context == "youtube":
+            self.test_button.set_sensitive(bool(self.ytdlp))
+            self.start_button.set_sensitive(
+                bool(self.ytdlp and self.ffmpeg and self.javascript_runtime_path)
+            )
+        else:
+            self.test_button.set_sensitive(False)
+            self.start_button.set_sensitive(False)
+
+        self.stop_button.set_sensitive(False)
+        return False
+
+    def set_recording_controls(self, recording):
+        self.test_button.set_sensitive(not recording)
+        self.start_button.set_sensitive(not recording)
+        self.stop_button.set_sensitive(recording)
+        if not recording:
+            self.refresh_action_buttons()
+
+    def is_twitch_url(self, url):
+        try:
+            host = (urlparse(url).hostname or "").lower()
+            return host == "twitch.tv" or host.endswith(".twitch.tv")
+        except Exception:
+            return False
+
+    def on_stream_url_changed(self, entry):
+        version_supported = (
+            not self.streamlink_version
+            or version_tuple(self.streamlink_version) >= (8, 0)
+        )
+        enabled = self.is_twitch_url(entry.get_text().strip()) and version_supported
+        self.twitch_codec_preference.set_sensitive(enabled)
+        self.twitch_codec_label.set_sensitive(enabled)
+
+    def streamlink_codec_args(self, url, preference=None):
+        if not self.is_twitch_url(url):
+            return []
+        if self.streamlink_version and version_tuple(self.streamlink_version) < (8, 0):
+            return []
+
+        preference = preference or self.twitch_codec_preference.get_active_id() or "h264"
+        codecs = {
+            "h264": "h264",
+            "av1": "h264,av1",
+            "all": "h264,h265,av1",
+        }.get(preference, "h264")
+        return ["--twitch-supported-codecs", codecs]
+
+    def on_stream_profile_changed(self, combo):
+        profile = combo.get_active_id() or "copy"
+        previous = self.output_format.get_active_id()
+        choices = {
+            "copy": [
+                ("ts", "TS — capture native"),
+                ("mkv", "MKV — remux sans perte"),
+                ("mp4", "MP4 — remux sans perte"),
+            ],
+            "h264_aac": [
+                ("mp4", "MP4 — recommandé"),
+                ("mkv", "MKV"),
+            ],
+            "av1_opus": [
+                ("mkv", "MKV — recommandé"),
+                ("webm", "WebM"),
+            ],
+        }.get(profile, [])
+
+        self.output_format.remove_all()
+        for identifier, label in choices:
+            self.output_format.append(identifier, label)
+
+        available = {identifier for identifier, _label in choices}
+        default = {"copy": "ts", "h264_aac": "mp4", "av1_opus": "mkv"}.get(
+            profile, "ts"
+        )
+        self.output_format.set_active_id(previous if previous in available else default)
 
     def log_startup(self):
         self.log_text("========================================")
@@ -1057,19 +1318,18 @@ class GUIStream(Gtk.Window):
 
     def check_dependencies(self, silent=False):
         self.streamlink = find_tool("streamlink")
+        if self.streamlink != self.streamlink_version_path:
+            self.streamlink_version = get_streamlink_installed_version(self.streamlink)
+            self.streamlink_version_path = self.streamlink
         self.ffmpeg = find_tool("ffmpeg")
         self.ffprobe = find_tool("ffprobe")
         self.ytdlp = find_tool("yt-dlp")
         self.javascript_runtime_name, self.javascript_runtime_path = find_javascript_runtime()
+        self.on_stream_url_changed(self.url_entry)
 
         if not self.streamlink and not self.ffmpeg:
-            self.start_button.set_sensitive(False)
-            self.test_button.set_sensitive(False)
             self.set_status("Configuration incomplète : Streamlink et FFmpeg introuvables")
         else:
-            self.start_button.set_sensitive(True)
-            self.test_button.set_sensitive(True)
-
             if self.streamlink and self.ffmpeg:
                 if self.ytdlp and self.javascript_runtime_path:
                     self.set_status("Prêt.")
@@ -1084,6 +1344,8 @@ class GUIStream(Gtk.Window):
                     self.set_status("Prêt — flux directs uniquement.")
             else:
                 self.set_status("Prêt — sources Streamlink uniquement.")
+
+        self.refresh_action_buttons()
 
         if not silent:
             self.write_diagnostic_log()
@@ -1244,6 +1506,14 @@ class GUIStream(Gtk.Window):
         self.local_playlist_files = files
         label = f"Listes locales ({len(files)})" if files else "Listes locales"
         self.playlist_button.set_label(label)
+        if files:
+            self.playlist_summary_label.set_text(
+                f"{len(files)} liste(s) détectée(s) à côté de l’AppImage ou du script."
+            )
+        else:
+            self.playlist_summary_label.set_text(
+                "Aucune liste .m3u, .m3u8 ou .xspf détectée à côté de l’AppImage ou du script."
+            )
 
         if log_result:
             self.log_text(f"Dossier des listes locales : {folder}")
@@ -1339,7 +1609,7 @@ class GUIStream(Gtk.Window):
         format_selector.append("ts", "TS")
         format_selector.append("mkv", "MKV")
         format_selector.append("mp4", "MP4")
-        current_format = self.output_format.get_active_text() or "ts"
+        current_format = self.output_format.get_active_id() or "ts"
         format_selector.set_active_id(current_format)
 
         refresh_button = Gtk.Button(label="Actualiser")
@@ -1461,12 +1731,11 @@ class GUIStream(Gtk.Window):
             )
             return
 
+        self.notebook.set_current_page(0)
         self.url_entry.set_text(selected_item["url"])
         self.filename.set_text(sanitize_filename(selected_item["title"]))
-        self.source_mode.set_active_id("auto")
-
-        format_indexes = {"ts": 0, "mkv": 1, "mp4": 2}
-        self.output_format.set_active(format_indexes.get(selected_format, 0))
+        self.stream_profile.set_active_id("copy")
+        self.output_format.set_active_id(selected_format)
         self.start_recording(None)
 
     def is_youtube_url(self, url):
@@ -1584,7 +1853,7 @@ class GUIStream(Gtk.Window):
             GLib.idle_add(
                 self.show_message,
                 "yt-dlp introuvable",
-                "Ouvre « Mises à jour », puis clique sur « Installer yt-dlp directement ». "
+                "Ouvre « Outils → Dépendances et mises à jour », puis installe yt-dlp directement. "
                 "Aucun paquet Arch n’est nécessaire.",
                 Gtk.MessageType.ERROR
             )
@@ -1607,7 +1876,7 @@ class GUIStream(Gtk.Window):
 
         title = sanitize_filename(data.get("title") or "")
         if title:
-            GLib.idle_add(self.set_auto_filename, title)
+            GLib.idle_add(self.set_auto_filename, title, "youtube")
 
         formats = data.get("formats") or []
         heights = sorted({
@@ -1661,7 +1930,11 @@ class GUIStream(Gtk.Window):
         )
 
     def test_link(self, button):
-        url = self.url_entry.get_text().strip()
+        context = self.active_context()
+        if context not in ("stream", "youtube"):
+            return
+
+        url = self.current_url_entry().get_text().strip()
 
         if not url:
             self.show_message("Lien manquant", "Colle un lien avant de le tester.", Gtk.MessageType.WARNING)
@@ -1669,15 +1942,17 @@ class GUIStream(Gtk.Window):
 
         self.test_button.set_sensitive(False)
         self.set_status("Test du lien en cours...")
-        source_mode = self.source_mode.get_active_id() or "auto"
+        source_mode = self.current_source_mode()
+        twitch_preference = self.twitch_codec_preference.get_active_id() or "h264"
 
         threading.Thread(
             target=self.test_link_worker,
-            args=(url, source_mode),
+            args=(url, source_mode, context, twitch_preference),
             daemon=True
         ).start()
 
-    def test_link_worker(self, url, source_mode="auto"):
+    def test_link_worker(self, url, source_mode="classic", context="stream",
+                         twitch_preference="h264"):
         self.log_text("")
         self.log_text("Test du lien :")
 
@@ -1687,7 +1962,9 @@ class GUIStream(Gtk.Window):
                 return
 
             if self.streamlink_can_handle_url(url):
-                cmd = [self.streamlink, "--json", url]
+                cmd = [self.streamlink]
+                cmd.extend(self.streamlink_codec_args(url, twitch_preference))
+                cmd.extend(["--json", url])
                 self.log_text("Commande Streamlink :")
                 self.log_text(" ".join(cmd))
 
@@ -1716,7 +1993,7 @@ class GUIStream(Gtk.Window):
 
                 title = self.extract_title(output)
                 if title:
-                    GLib.idle_add(self.set_auto_filename, title)
+                    GLib.idle_add(self.set_auto_filename, title, context)
 
                 if result.returncode == 0:
                     self.set_status("Lien Streamlink valide.")
@@ -1745,7 +2022,7 @@ class GUIStream(Gtk.Window):
 
                 title = self.direct_source_filename(url)
                 if title:
-                    GLib.idle_add(self.set_auto_filename, title)
+                    GLib.idle_add(self.set_auto_filename, title, context)
 
                 self.log_text(f"Flux direct détecté : {details}")
                 self.set_status("Flux direct valide.")
@@ -1769,7 +2046,7 @@ class GUIStream(Gtk.Window):
             self.set_status("Erreur pendant le test.")
 
         finally:
-            GLib.idle_add(self.test_button.set_sensitive, True)
+            GLib.idle_add(self.refresh_action_buttons)
 
     def extract_title(self, output):
         match = re.search(r'"title":\s*"([^"]+)"', output)
@@ -1793,13 +2070,15 @@ class GUIStream(Gtk.Window):
         self.quality.set_active(0)
         return False
 
-    def set_auto_filename(self, title):
-        if not self.filename.get_text().strip():
-            self.filename.set_text(title)
+    def set_auto_filename(self, title, context="stream"):
+        entry = self.youtube_filename if context == "youtube" else self.filename
+        if not entry.get_text().strip():
+            entry.set_text(title)
         return False
 
-    def safe_filename(self):
-        name = sanitize_filename(self.filename.get_text().strip())
+    def safe_filename(self, context="stream"):
+        entry = self.youtube_filename if context == "youtube" else self.filename
+        name = sanitize_filename(entry.get_text().strip())
         if not name:
             name = "record_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         return name
@@ -1815,7 +2094,7 @@ class GUIStream(Gtk.Window):
             "embed_metadata": self.youtube_embed_metadata.get_active(),
             "embed_thumbnail": self.youtube_embed_thumbnail.get_active(),
             "write_infojson": self.youtube_write_infojson.get_active(),
-            "filename": sanitize_filename(self.filename.get_text().strip()),
+            "filename": sanitize_filename(self.youtube_filename.get_text().strip()),
         }
 
     def youtube_output_template(self, folder, filename):
@@ -2060,14 +2339,16 @@ class GUIStream(Gtk.Window):
         finally:
             self.process = None
             self.active_backend = None
-            GLib.idle_add(self.start_button.set_sensitive, True)
-            GLib.idle_add(self.test_button.set_sensitive, True)
-            GLib.idle_add(self.stop_button.set_sensitive, False)
+            GLib.idle_add(self.set_recording_controls, False)
             GLib.idle_add(self.open_folder_button.set_sensitive, True)
             self.set_status("Prêt.")
 
     def start_recording(self, button):
-        url = self.url_entry.get_text().strip()
+        context = self.active_context()
+        if context not in ("stream", "youtube"):
+            return
+
+        url = self.current_url_entry().get_text().strip()
 
         if not url:
             self.show_message("Lien manquant", "Colle un lien avant de lancer l’enregistrement.", Gtk.MessageType.WARNING)
@@ -2075,15 +2356,16 @@ class GUIStream(Gtk.Window):
 
         self.check_dependencies(silent=True)
 
-        source_mode = self.source_mode.get_active_id() or "auto"
-        use_ytdlp = self.should_use_ytdlp(url, source_mode)
-        fmt = self.output_format.get_active_text()
+        source_mode = self.current_source_mode()
+        use_ytdlp = context == "youtube"
+        fmt = self.current_output_format()
+        profile = self.stream_profile.get_active_id() or "copy"
 
         if use_ytdlp:
             if not self.ytdlp:
                 self.show_message(
                     "yt-dlp introuvable",
-                    "Ouvre « Mises à jour », puis clique sur « Installer yt-dlp directement ». "
+                    "Ouvre « Outils → Dépendances et mises à jour », puis installe yt-dlp directement. "
                     "Aucun paquet Arch n’est nécessaire.",
                     Gtk.MessageType.ERROR
                 )
@@ -2093,7 +2375,7 @@ class GUIStream(Gtk.Window):
                 self.show_message(
                     "FFmpeg introuvable",
                     "FFmpeg est nécessaire pour réunir la vidéo et l’audio YouTube en haute qualité. "
-                    "Tu peux l’installer depuis « Mises à jour » sans passer par pacman.",
+                    "Tu peux l’installer depuis « Outils » sans passer par pacman.",
                     Gtk.MessageType.ERROR
                 )
                 return
@@ -2103,7 +2385,7 @@ class GUIStream(Gtk.Window):
                     "Moteur JavaScript introuvable",
                     "Deno ou Node est nécessaire pour obtenir toutes les qualités YouTube. "
                     "GUIStream bloque le téléchargement afin d’éviter une vidéo limitée à 360p. "
-                    "Utilise « Mises à jour » pour installer Deno directement.",
+                    "Utilise l’onglet « Outils » pour installer Deno directement.",
                     Gtk.MessageType.ERROR
                 )
                 return
@@ -2111,15 +2393,16 @@ class GUIStream(Gtk.Window):
         elif not self.streamlink and not self.ffmpeg:
             self.show_message(
                 "Moteur d’enregistrement introuvable",
-                "Ouvre « Mises à jour » puis installe Streamlink ou FFmpeg directement.",
+                "Ouvre l’onglet « Outils » puis installe Streamlink ou FFmpeg directement.",
                 Gtk.MessageType.ERROR
             )
             return
 
-        if not use_ytdlp and fmt != "ts" and not self.ffmpeg:
+        if not use_ytdlp and (fmt != "ts" or profile != "copy") and not self.ffmpeg:
             self.show_message(
                 "FFmpeg introuvable",
-                "FFmpeg est nécessaire pour MKV ou MP4. Tu peux l’installer depuis « Mises à jour ».",
+                "FFmpeg est nécessaire pour le remux ou la conversion. "
+                "Tu peux l’installer depuis l’onglet « Outils ».",
                 Gtk.MessageType.ERROR
             )
             return
@@ -2131,12 +2414,10 @@ class GUIStream(Gtk.Window):
         self.last_health_report = "Enregistrement en cours."
         self.set_health("en cours", "surveillance active")
 
-        folder = self.folder.get_filename() or os.getcwd()
+        folder = self.current_folder()
         self.open_folder_button.set_sensitive(False)
 
-        self.start_button.set_sensitive(False)
-        self.test_button.set_sensitive(False)
-        self.stop_button.set_sensitive(True)
+        self.set_recording_controls(True)
         self.set_status("Analyse de la source...")
 
         if self.stats_timer_id:
@@ -2162,7 +2443,8 @@ class GUIStream(Gtk.Window):
             return
 
         quality = self.quality.get_active_text() or "best"
-        ts_file = os.path.join(folder, self.safe_filename()) + ".ts"
+        ts_file = os.path.join(folder, self.safe_filename("stream")) + ".ts"
+        twitch_preference = self.twitch_codec_preference.get_active_id() or "h264"
 
         self.current_ts_file = ts_file
         self.final_file = ts_file
@@ -2170,7 +2452,7 @@ class GUIStream(Gtk.Window):
 
         threading.Thread(
             target=self.record_worker,
-            args=(url, quality, fmt, ts_file),
+            args=(url, quality, fmt, ts_file, profile, twitch_preference),
             daemon=True
         ).start()
 
@@ -2263,13 +2545,16 @@ class GUIStream(Gtk.Window):
             self.set_health("analyse impossible")
             return False
 
-    def record_worker(self, url, quality, fmt, ts_file):
+    def record_worker(self, url, quality, fmt, ts_file, profile="copy",
+                      twitch_preference="h264"):
         try:
             self.log_text("")
 
             if self.streamlink_can_handle_url(url):
                 backend = "Streamlink"
-                cmd = [self.streamlink, url, quality, "-o", ts_file]
+                cmd = [self.streamlink]
+                cmd.extend(self.streamlink_codec_args(url, twitch_preference))
+                cmd.extend([url, quality, "-o", ts_file])
             else:
                 self.log_text("Streamlink ne gère pas ce lien. Recherche d’un flux direct...")
                 valid, details = self.probe_direct_source(url)
@@ -2338,14 +2623,14 @@ class GUIStream(Gtk.Window):
                 self.log_text("Enregistrement arrêté par l’utilisateur.")
                 if has_data:
                     self.log_text(f"Fichier conservé : {ts_file}")
-                    self.finalize_capture(ts_file, fmt)
+                    self.finalize_capture(ts_file, fmt, profile)
                 else:
                     self.log_text("Aucune donnée vidéo n’a été enregistrée.")
 
             elif returncode == 0:
                 self.log_text("Enregistrement terminé.")
                 if has_data:
-                    self.finalize_capture(ts_file, fmt)
+                    self.finalize_capture(ts_file, fmt, profile)
                 else:
                     self.log_text("L’enregistrement est vide.")
                     self.set_health("problème détecté", "fichier vide")
@@ -2355,7 +2640,7 @@ class GUIStream(Gtk.Window):
                     f"{backend} s’est arrêté avec le code {returncode}, "
                     "mais la partie déjà enregistrée est conservée."
                 )
-                self.finalize_capture(ts_file, fmt)
+                self.finalize_capture(ts_file, fmt, profile)
             else:
                 self.log_text(f"{backend} s’est arrêté avec une erreur.")
                 self.set_health("problème détecté", f"{backend} a quitté avec une erreur")
@@ -2364,27 +2649,153 @@ class GUIStream(Gtk.Window):
             if self.user_stopped:
                 self.log_text("Enregistrement arrêté par l’utilisateur.")
                 if os.path.exists(ts_file) and os.path.getsize(ts_file) > 0:
-                    self.finalize_capture(ts_file, fmt)
+                    self.finalize_capture(ts_file, fmt, profile)
             else:
                 self.log_text(f"Erreur : {e}")
 
         finally:
             self.process = None
             self.active_backend = None
-            GLib.idle_add(self.start_button.set_sensitive, True)
-            GLib.idle_add(self.test_button.set_sensitive, True)
-            GLib.idle_add(self.stop_button.set_sensitive, False)
+            GLib.idle_add(self.set_recording_controls, False)
             GLib.idle_add(self.open_folder_button.set_sensitive, True)
             self.set_status("Prêt.")
 
-    def finalize_capture(self, ts_file, fmt):
+    def finalize_capture(self, ts_file, fmt, profile="copy"):
         self.check_recording_health(ts_file)
 
-        if fmt == "ts":
+        if profile != "copy":
+            self.transcode_capture(ts_file, fmt, profile)
+        elif fmt == "ts":
             self.final_file = ts_file
             self.log_text(f"Fichier final : {ts_file}")
         else:
             self.remux(ts_file, fmt)
+
+    def ffmpeg_encoder_available(self, encoder):
+        if not self.ffmpeg:
+            return False
+        try:
+            result = subprocess.run(
+                [self.ffmpeg, "-hide_banner", "-encoders"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=20
+            )
+            return bool(re.search(rf"\b{re.escape(encoder)}\b", result.stdout or ""))
+        except Exception:
+            return False
+
+    def transcode_capture(self, ts_file, fmt, profile):
+        if not self.ffmpeg or not os.path.exists(ts_file):
+            self.log_text("Conversion impossible : FFmpeg ou fichier TS introuvable.")
+            return
+
+        profiles = {
+            "h264_aac": {
+                "label": "H.264 + AAC",
+                "encoders": ("libx264", "aac"),
+                "args": [
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+                ],
+            },
+            "av1_opus": {
+                "label": "AV1 + Opus",
+                "encoders": ("libsvtav1", "libopus"),
+                "args": [
+                    "-c:v", "libsvtav1", "-preset", "10", "-crf", "32",
+                    "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "160k",
+                ],
+            },
+        }
+        settings = profiles.get(profile)
+        if not settings:
+            self.log_text(f"Profil de conversion inconnu : {profile}")
+            return
+
+        missing = [
+            encoder for encoder in settings["encoders"]
+            if not self.ffmpeg_encoder_available(encoder)
+        ]
+        if missing:
+            message = (
+                "Ce build de FFmpeg ne contient pas les encodeurs nécessaires : "
+                + ", ".join(missing)
+                + f".\n\nLe fichier TS original est conservé :\n{ts_file}"
+            )
+            self.log_text(message)
+            GLib.idle_add(
+                self.show_message,
+                "Conversion indisponible",
+                message,
+                Gtk.MessageType.ERROR
+            )
+            return
+
+        output = os.path.splitext(ts_file)[0] + "." + fmt
+        cmd = [
+            self.ffmpeg,
+            "-y",
+            "-hide_banner",
+            "-i", ts_file,
+            "-map", "0:v:0",
+            "-map", "0:a?",
+            "-map_metadata", "0",
+        ]
+        cmd.extend(settings["args"])
+        if fmt == "mp4":
+            cmd.extend(["-movflags", "+faststart"])
+        cmd.append(output)
+
+        GLib.idle_add(
+            self.show_remux_dialog,
+            "Conversion en cours…",
+            f"Profil {settings['label']}. Le TS original sera conservé."
+        )
+        self.log_text("")
+        self.log_text(f"Conversion {settings['label']} après capture :")
+        self.log_text(" ".join(cmd))
+        self.set_status(f"Conversion {settings['label']} en cours...")
+        self.active_backend = "conversion"
+
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            for line in self.process.stdout:
+                self.log_text(line.rstrip())
+            self.process.wait()
+
+            if self.process.returncode == 0 and os.path.isfile(output):
+                self.final_file = output
+                self.log_text(f"Conversion terminée : {output}")
+                GLib.idle_add(
+                    self.close_remux_dialog,
+                    "Conversion terminée",
+                    f"Fichier final : {output}\n\nLe TS original est conservé.",
+                    Gtk.MessageType.INFO
+                )
+            else:
+                self.final_file = ts_file
+                GLib.idle_add(
+                    self.close_remux_dialog,
+                    "Conversion interrompue",
+                    f"La conversion a échoué ou a été arrêtée. Le TS est conservé :\n{ts_file}",
+                    Gtk.MessageType.ERROR
+                )
+        except Exception as e:
+            self.final_file = ts_file
+            self.log_text(f"Erreur de conversion : {e}")
+            GLib.idle_add(
+                self.close_remux_dialog,
+                "Conversion impossible",
+                f"Le TS est conservé :\n{ts_file}",
+                Gtk.MessageType.ERROR
+            )
 
     def update_stats(self):
         if not self.process and not self.recording_start:
@@ -2498,15 +2909,16 @@ class GUIStream(Gtk.Window):
 
         return False
 
-    def show_remux_dialog(self):
+    def show_remux_dialog(self, title="Remux en cours...",
+                          detail="Ne ferme pas GUIStream pendant cette étape."):
         self.remux_dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=0,
             message_type=Gtk.MessageType.INFO,
             buttons=Gtk.ButtonsType.NONE,
-            text="Remux en cours..."
+            text=title
         )
-        self.remux_dialog.format_secondary_text("Ne ferme pas GUIStream pendant cette étape.")
+        self.remux_dialog.format_secondary_text(detail)
         self.remux_dialog.show_all()
         return False
 
@@ -2531,16 +2943,25 @@ class GUIStream(Gtk.Window):
         if not self.process:
             return
 
+        question = (
+            "Arrêter la conversion ?"
+            if self.active_backend == "conversion"
+            else "Arrêter l’enregistrement ?"
+        )
         dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=0,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Arrêter l’enregistrement ?"
+            text=question
         )
         if self.active_backend == "yt-dlp":
             dialog.format_secondary_text(
                 "GUIStream demandera à yt-dlp de finaliser proprement le fichier déjà téléchargé."
+            )
+        elif self.active_backend == "conversion":
+            dialog.format_secondary_text(
+                "La conversion sera interrompue. La capture TS originale restera conservée."
             )
         else:
             dialog.format_secondary_text(
@@ -2566,7 +2987,7 @@ class GUIStream(Gtk.Window):
                 self.process.terminate()
 
     def open_current_folder(self, button):
-        target = self.final_file or self.current_ts_file or self.folder.get_filename()
+        target = self.final_file or self.current_ts_file or self.current_folder()
         open_folder(target)
 
     def show_message(self, title, message, message_type):
@@ -3236,3 +3657,4 @@ if __name__ == "__main__":
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     Gtk.main()
+

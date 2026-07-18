@@ -1,0 +1,49 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: GUIStream Windows x86_64
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer Python, GTK 3 et PyGObject
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-python-gobject
+            mingw-w64-ucrt-x86_64-gtk3
+            mingw-w64-ucrt-x86_64-python-pyinstaller
+
+      - name: Construire GUIStream.exe
+        shell: msys2 {0}
+        run: cmd.exe /D /C build-windows.bat
+
+      - name: Vérifier le fichier produit
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/GUIStream.exe")) {
+            throw "dist/GUIStream.exe est introuvable"
+          }
+          Get-Item "dist/GUIStream.exe" | Format-List Name, Length, LastWriteTime
+          Get-FileHash "dist/GUIStream.exe" -Algorithm SHA256
+
+      - name: Publier l’exécutable
+        uses: actions/upload-artifact@v4
+        with:
+          name: GUIStream-Windows-x86_64
+          path: dist/GUIStream.exe
+          if-no-files-found: error
+          retention-days: 30

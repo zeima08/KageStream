@@ -1,11 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
+
+project_dir = Path(SPECPATH).resolve()
+source_file = project_dir / 'guistream.py'
+assets_dir = project_dir / 'assets'
 
 a = Analysis(
-    ['/home/zeima/Documents/perso/GuiStream-source/guistream.py'],
-    pathex=[],
+    [str(source_file)],
+    pathex=[str(project_dir)],
     binaries=[],
-    datas=[('/home/zeima/Documents/perso/GuiStream-source/assets', 'assets')],
+    datas=[(str(assets_dir), 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

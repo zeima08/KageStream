@@ -7,9 +7,33 @@ APPDIR="$ROOT_DIR/AppDir"
 ICON_SRC="$ROOT_DIR/assets/icons/GUIStream.png"
 APPIMAGETOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
 VENV_DIR="$ROOT_DIR/.venv"
+SOURCE_FILE="$ROOT_DIR/guistream.py"
+SPEC_FILE="$ROOT_DIR/GUIStream.spec"
+OUTPUT_APPIMAGE="$ROOT_DIR/GUIStream-x86_64.AppImage"
 
 echo "== GUIStream AppImage build =="
 echo "Dossier : $ROOT_DIR"
+
+if [ ! -f "$SOURCE_FILE" ]; then
+    echo "Erreur : source introuvable : $SOURCE_FILE"
+    exit 1
+fi
+
+if [ ! -f "$SPEC_FILE" ]; then
+    echo "Erreur : fichier PyInstaller introuvable : $SPEC_FILE"
+    exit 1
+fi
+
+if ! grep -qF 'self.notebook = Gtk.Notebook()' "$SOURCE_FILE"; then
+    echo "Erreur : $SOURCE_FILE ne contient pas la nouvelle interface à onglets."
+    echo "Le build est arrêté pour éviter de recréer accidentellement l’ancienne interface."
+    exit 1
+fi
+
+echo "Source embarquée : $SOURCE_FILE"
+echo "Empreinte de la source :"
+sha256sum "$SOURCE_FILE"
+cd "$ROOT_DIR"
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -230,15 +254,16 @@ mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
 
 echo "== Build PyInstaller =="
-if [ -f "$ROOT_DIR/GUIStream.spec" ]; then
-    python -m PyInstaller "$ROOT_DIR/GUIStream.spec"
-else
-    python -m PyInstaller \
-        --onefile \
-        --windowed \
-        --name "$APP_NAME" \
-        --add-data "$ROOT_DIR/assets:assets" \
-        "$ROOT_DIR/guistream.py"
+python -m PyInstaller \
+    --clean \
+    --noconfirm \
+    --distpath "$ROOT_DIR/dist" \
+    --workpath "$ROOT_DIR/build" \
+    "$SPEC_FILE"
+
+if [ ! -x "$ROOT_DIR/dist/$APP_NAME" ]; then
+    echo "Erreur : PyInstaller n’a pas produit $ROOT_DIR/dist/$APP_NAME"
+    exit 1
 fi
 
 echo "== Copie des binaires dans AppDir =="
@@ -271,15 +296,21 @@ fi
 
 echo "== Téléchargement appimagetool si absent =="
 if [ ! -f "$APPIMAGETOOL" ]; then
-    wget -O "$APPIMAGETOOL" "https://github.com/AppImage/AppImageKit/releases/latest/download/appimagetool-x86_64.AppImage"
+    wget -O "$APPIMAGETOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
     chmod +x "$APPIMAGETOOL"
 fi
 
 echo "== Création AppImage =="
 cd "$ROOT_DIR"
-ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR"
+rm -f "$OUTPUT_APPIMAGE"
+ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_APPIMAGE"
 
 echo ""
 echo "Terminé."
-echo "Fichier généré :"
-ls -lh "$ROOT_DIR"/*.AppImage || true
+echo "AppImage générée :"
+ls -lh "$OUTPUT_APPIMAGE"
+echo "Empreinte de l’AppImage :"
+sha256sum "$OUTPUT_APPIMAGE"
+echo ""
+echo "Lancement :"
+printf '  %q\n' "$OUTPUT_APPIMAGE"
