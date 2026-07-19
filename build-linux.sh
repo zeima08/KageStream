@@ -4,14 +4,14 @@ set -euo pipefail
 APP_NAME="KageStream"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPDIR="$ROOT_DIR/AppDir"
-ICON_SRC="$ROOT_DIR/assets/icons/GUIStream.png"
+ICON_SRC="$ROOT_DIR/assets/icons/kagestream.png"
 APPIMAGETOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
 VENV_DIR="$ROOT_DIR/.venv"
 SOURCE_FILE="$ROOT_DIR/kagestream.py"
 SPEC_FILE="$ROOT_DIR/kagestream.spec"
-OUTPUT_APPIMAGE="$ROOT_DIR/GUIStream-x86_64.AppImage"
+OUTPUT_APPIMAGE="$ROOT_DIR/KageStream-x86_64.AppImage"
 
-echo "== GUIStream AppImage build =="
+echo "== KageStream AppImage build =="
 echo "Dossier : $ROOT_DIR"
 
 if [ ! -f "$SOURCE_FILE" ]; then
@@ -173,7 +173,7 @@ HERE="$(dirname "$(readlink -f "$0")")"
 
 export PATH="$HERE/usr/bin:$PATH"
 
-exec "$HERE/usr/bin/GUIStream" "$@"
+exec "$HERE/usr/bin/KageStream" "$@"
 EOF
 
     chmod +x "$APPDIR/AppRun"
@@ -287,8 +287,8 @@ write_desktop_file
 
 echo "== Copie de l'icône =="
 if [ -f "$ICON_SRC" ]; then
-    cp "$ICON_SRC" "$APPDIR/GUIStream.png"
-    cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/GUIStream.png"
+    cp "$ICON_SRC" "$APPDIR/KageStream.png"
+    cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/KageStream.png"
 else
     echo "Icône introuvable : $ICON_SRC"
     exit 1

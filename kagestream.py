@@ -26,6 +26,9 @@ APP_NAME = "KageStream"
 APP_AUTHOR = "Zeima"
 APP_TITLE = f"{APP_NAME} by {APP_AUTHOR}"
 
+BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+ICON_PATH = os.path.join(BASE_DIR, "assets", "icons", "kagestream.png")
+
 YTDLP_RELEASE_BASE = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
 DENO_RELEASE_BASE = "https://github.com/denoland/deno/releases/latest/download"
 GITHUB_API_BASE = "https://api.github.com/repos"
@@ -820,6 +823,8 @@ class KageStream(Gtk.Window):
         super().__init__(title=APP_TITLE)
 
         self.set_default_size(1100, 820)
+        if os.path.isfile(ICON_PATH):
+            self.set_icon_from_file(ICON_PATH)
 
         self.process = None
         self.user_stopped = False

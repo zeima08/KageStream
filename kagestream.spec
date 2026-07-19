@@ -6,6 +6,7 @@ from pathlib import Path
 project_dir = Path(SPECPATH).resolve()
 source_file = project_dir / 'kagestream.py'
 assets_dir = project_dir / 'assets'
+icon_file = assets_dir / 'icons' / 'kagestream.ico'
 
 a = Analysis(
     [str(source_file)],
@@ -28,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='GUIStream',
+    name='KageStream',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -41,4 +42,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(icon_file),
 )
