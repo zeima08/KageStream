@@ -1,6 +1,6 @@
-# GUIStream
+# KageStream
 
-GUIStream est une interface GTK 3 conçue par Zeima pour télécharger des vidéos, enregistrer des lives et sauvegarder des flux réseau sans devoir composer manuellement les commandes Streamlink, yt-dlp ou FFmpeg.
+KageStream est une interface GTK 3 conçue par Zeima pour télécharger des vidéos, enregistrer des lives et sauvegarder des flux réseau sans devoir composer manuellement les commandes Streamlink, yt-dlp ou FFmpeg.
 
 L’application accepte les liens YouTube, les sites reconnus par Streamlink, les sources MPEG-TS/HLS directement lisibles par FFmpeg ainsi que les liens provenant de listes locales M3U, M3U8 et XSPF.
 
@@ -25,14 +25,14 @@ L’application accepte les liens YouTube, les sites reconnus par Streamlink, le
 Rends l’AppImage exécutable puis lance-la :
 
 ```bash
-chmod +x GUIStream.AppImage
-./GUIStream.AppImage
+chmod +x KageStream-x86_64.AppImage
+./KageStream-x86_64.AppImage
 ```
 
-Une AppImage étant montée en lecture seule, les dépendances téléchargées par GUIStream sont conservées dans un dossier utilisateur persistant :
+Une AppImage étant montée en lecture seule, les dépendances téléchargées par KageStream sont conservées dans un dossier utilisateur persistant :
 
 ```text
-~/.local/share/GUIStream/bin
+~/.local/share/KageStream/bin
 ```
 
 ### Avec le script Python
@@ -40,11 +40,9 @@ Une AppImage étant montée en lecture seule, les dépendances téléchargées p
 Le lancement du script nécessite Python 3, PyGObject et GTK 3. Les autres outils peuvent ensuite être récupérés depuis la fenêtre **Mises à jour**.
 
 ```bash
-chmod +x "guistream(3).py"
-python3 "guistream(3).py"
+chmod +x kagestream.py
+python3 kagestream.py
 ```
-
-Le fichier peut être renommé en `guistream.py` pour simplifier la commande.
 
 ## Dépendances
 
@@ -54,7 +52,7 @@ Le fichier peut être renommé en `guistream.py` pour simplifier la commande.
 - PyGObject (`gi`)
 - GTK 3
 
-GTK et PyGObject doivent être fournis par l’AppImage ou le système. GUIStream ne tente pas de remplacer les bibliothèques graphiques du système.
+GTK et PyGObject doivent être fournis par l’AppImage ou le système. KageStream ne tente pas de remplacer les bibliothèques graphiques du système.
 
 ### Outils multimédias
 
@@ -74,7 +72,7 @@ Pour installer ce qui manque :
 
 Des boutons séparés permettent aussi de mettre à jour ou réinstaller yt-dlp, Deno, FFmpeg/FFprobe et Streamlink.
 
-Chaque téléchargement est contrôlé avec une somme SHA-256 publiée par sa source avant d’être activé. Un fichier partiel ou non vérifié n’est pas conservé. GUIStream utilise en priorité les outils de son dossier utilisateur, puis ceux embarqués dans l’application, puis ceux disponibles dans le `PATH`.
+Chaque téléchargement est contrôlé avec une somme SHA-256 publiée par sa source avant d’être activé. Un fichier partiel ou non vérifié n’est pas conservé. KageStream utilise en priorité les outils de son dossier utilisateur, puis ceux embarqués dans l’application, puis ceux disponibles dans le `PATH`.
 
 ## Télécharger une vidéo YouTube
 
@@ -87,7 +85,7 @@ Chaque téléchargement est contrôlé avec une somme SHA-256 publiée par sa so
 
 L’option **Meilleure disponible — sans limite** demande à yt-dlp de sélectionner la meilleure piste vidéo et la meilleure piste audio. FFmpeg est ensuite utilisé pour les réunir dans le conteneur final.
 
-GUIStream exige un moteur JavaScript compatible pour les téléchargements YouTube. Sans Deno, Node.js, QuickJS ou Bun, l’opération est bloquée afin d’éviter de retomber silencieusement sur une qualité limitée à 360p.
+KageStream exige un moteur JavaScript compatible pour les téléchargements YouTube. Sans Deno, Node.js, QuickJS ou Bun, l’opération est bloquée afin d’éviter de retomber silencieusement sur une qualité limitée à 360p.
 
 ## Enregistrer un live YouTube
 
@@ -96,7 +94,7 @@ Deux modes sont disponibles :
 - **Live YouTube — à partir de maintenant** enregistre à partir du direct actuel.
 - **Live YouTube — depuis le début** demande à yt-dlp de reprendre le live depuis son commencement lorsque YouTube le permet. Ce mode reste expérimental.
 
-Le bouton **Stop** envoie un arrêt propre à yt-dlp. GUIStream tente ensuite de finaliser et conserver les données déjà téléchargées.
+Le bouton **Stop** envoie un arrêt propre à yt-dlp. KageStream tente ensuite de finaliser et conserver les données déjà téléchargées.
 
 ## Enregistrer un flux classique ou MPEG-TS
 
@@ -107,9 +105,9 @@ Le bouton **Stop** envoie un arrêt propre à yt-dlp. GUIStream tente ensuite de
 5. Choisis le format TS, MKV ou MP4.
 6. Lance l’enregistrement.
 
-GUIStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien, FFprobe puis FFmpeg vérifient s’il s’agit d’une source multimédia directe. Les flux HTTP et HTTPS bénéficient d’options de reconnexion.
+KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien, FFprobe puis FFmpeg vérifient s’il s’agit d’une source multimédia directe. Les flux HTTP et HTTPS bénéficient d’options de reconnexion.
 
-La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo. Si MP4 refuse certains codecs, GUIStream propose un repli vers MKV et conserve toujours le TS original en cas d’échec.
+La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo. Si MP4 refuse certains codecs, KageStream propose un repli vers MKV et conserve toujours le TS original en cas d’échec.
 
 ## Utiliser des listes M3U et XSPF
 
@@ -143,7 +141,7 @@ Le bouton **Diagnostic** affiche l’état et la version de :
 - FFmpeg et FFprobe ;
 - Deno, Node.js, QuickJS ou Bun.
 
-Pendant un enregistrement, GUIStream surveille les messages de Streamlink et FFmpeg. Une fois la capture terminée, FFmpeg relit le fichier afin de repérer les paquets corrompus, les erreurs de décodage et les horodatages incohérents.
+Pendant un enregistrement, KageStream surveille les messages de Streamlink et FFmpeg. Une fois la capture terminée, FFmpeg relit le fichier afin de repérer les paquets corrompus, les erreurs de décodage et les horodatages incohérents.
 
 Les commandes exécutées et les erreurs détaillées restent visibles dans la zone de journal de la fenêtre principale.
 
@@ -151,7 +149,7 @@ Les commandes exécutées et les erreurs détaillées restent visibles dans la z
 
 ### YouTube reste limité à 360p
 
-Ouvre **Mises à jour** et installe Deno. Relance ensuite **Tester le lien**. GUIStream bloque normalement le téléchargement lorsque le moteur JavaScript manque, précisément pour éviter ce résultat.
+Ouvre **Mises à jour** et installe Deno. Relance ensuite **Tester le lien**. KageStream bloque normalement le téléchargement lorsque le moteur JavaScript manque, précisément pour éviter ce résultat.
 
 ### yt-dlp ou un miroir Arch est indisponible
 
@@ -163,7 +161,7 @@ Vérifie que le fichier possède bien l’extension `.m3u`, `.m3u8` ou `.xspf` e
 
 ### Le remux MP4 échoue
 
-Certains codecs ne sont pas compatibles avec le conteneur MP4. Accepte le repli MKV proposé par GUIStream, ou conserve le fichier TS créé pendant la capture.
+Certains codecs ne sont pas compatibles avec le conteneur MP4. Accepte le repli MKV proposé par KageStream, ou conserve le fichier TS créé pendant la capture.
 
 ### Streamlink ou FFmpeg n’est pas détecté
 
@@ -176,7 +174,7 @@ Ouvre **Mises à jour** et utilise le bouton global d’installation. Le chemin 
 - Les contenus protégés par DRM ne sont pas pris en charge.
 - L’installation directe de Streamlink et FFmpeg est actuellement destinée à Linux x86_64 et ARM64.
 - L’AppImage Streamlink nécessite une distribution Linux basée sur glibc.
-- Une interruption brutale du système peut laisser un fichier `.part` ou un TS incomplet, même si GUIStream essaie de finaliser proprement les arrêts demandés depuis l’interface.
+- Une interruption brutale du système peut laisser un fichier `.part` ou un TS incomplet, même si KageStream essaie de finaliser proprement les arrêts demandés depuis l’interface.
 
 ## Historique
 
