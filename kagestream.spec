@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 project_dir = Path(SPECPATH).resolve()
-source_file = project_dir / 'guistream.py'
+source_file = project_dir / 'kagestream.py'
 assets_dir = project_dir / 'assets'
 
 a = Analysis(

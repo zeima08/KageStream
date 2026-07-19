@@ -22,7 +22,7 @@ from datetime import datetime
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
 
-APP_NAME = "GUIStream"
+APP_NAME = "KageStream"
 APP_AUTHOR = "Zeima"
 APP_TITLE = f"{APP_NAME} by {APP_AUTHOR}"
 
@@ -784,8 +784,8 @@ def get_latest_ytdlp_version():
 def get_latest_gui_version():
     """
     Fonction prête pour plus tard.
-    Si tu publies GUIStream sur GitHub, remplace l'URL par :
-    https://api.github.com/repos/TON_COMPTE/GUIStream/releases/latest
+    Si tu publies KageStream sur GitHub, remplace l'URL par :
+    https://api.github.com/repos/TON_COMPTE/KageStream/releases/latest
     """
     return ""
 
@@ -815,7 +815,7 @@ def get_ytdlp_installed_version(ytdlp_path):
 
 
 
-class GUIStream(Gtk.Window):
+class KageStream(Gtk.Window):
     def __init__(self):
         super().__init__(title=APP_TITLE)
 
@@ -937,7 +937,7 @@ class GUIStream(Gtk.Window):
 
         stream_help = Gtk.Label(
             label=(
-                "La préférence de codec source ne concerne que Twitch. Pour l’IPTV, GUIStream "
+                "La préférence de codec source ne concerne que Twitch. Pour l’IPTV, KageStream "
                 "conserve le codec reçu. Les profils H.264/AAC et AV1/Opus sont convertis après "
                 "la capture afin de protéger l’enregistrement en direct."
             ),
@@ -1067,7 +1067,7 @@ class GUIStream(Gtk.Window):
         playlist_page.pack_start(playlist_title, False, False, 0)
 
         self.playlist_summary_label = Gtk.Label(
-            label="GUIStream recherche les listes placées à côté de l’AppImage ou du script.",
+            label="KageStream recherche les listes placées à côté de l’AppImage ou du script.",
             xalign=0
         )
         self.playlist_summary_label.set_line_wrap(True)
@@ -1560,7 +1560,7 @@ class GUIStream(Gtk.Window):
                 "Listes vides ou illisibles",
                 (
                     f"{len(files)} liste(s) détectée(s), mais aucun lien n’a pu être lu."
-                    " Consulte les logs de GUIStream."
+                    " Consulte les logs de KageStream."
                 ),
                 Gtk.MessageType.WARNING
             )
@@ -1918,7 +1918,7 @@ class GUIStream(Gtk.Window):
         if not self.javascript_runtime_path:
             summary += (
                 "\n\nAttention : Deno ou Node n’est pas détecté. "
-                "GUIStream bloquera le téléchargement pour éviter une qualité limitée."
+                "KageStream bloquera le téléchargement pour éviter une qualité limitée."
             )
 
         self.set_status(f"{kind} reconnu.")
@@ -2131,7 +2131,7 @@ class GUIStream(Gtk.Window):
             "--merge-output-format", container,
             "--remux-video", container,
             "--output", self.youtube_output_template(folder, config["filename"]),
-            "--print", "after_move:GUISTREAM_FINAL:%(filepath)s",
+            "--print", "after_move:KAGESTREAM_FINAL:%(filepath)s",
         ]
 
         if self.javascript_runtime_name and self.javascript_runtime_path:
@@ -2180,7 +2180,7 @@ class GUIStream(Gtk.Window):
         return cmd
 
     def inspect_ytdlp_line(self, line):
-        marker = "GUISTREAM_FINAL:"
+        marker = "KAGESTREAM_FINAL:"
         if marker in line:
             final_path = line.split(marker, 1)[1].strip()
             if final_path:
@@ -2321,7 +2321,7 @@ class GUIStream(Gtk.Window):
                 GLib.idle_add(
                     self.show_message,
                     "Téléchargement YouTube impossible",
-                    "yt-dlp a rencontré une erreur. Consulte les logs de GUIStream.",
+                    "yt-dlp a rencontré une erreur. Consulte les logs de KageStream.",
                     Gtk.MessageType.ERROR
                 )
 
@@ -2384,7 +2384,7 @@ class GUIStream(Gtk.Window):
                 self.show_message(
                     "Moteur JavaScript introuvable",
                     "Deno ou Node est nécessaire pour obtenir toutes les qualités YouTube. "
-                    "GUIStream bloque le téléchargement afin d’éviter une vidéo limitée à 360p. "
+                    "KageStream bloque le téléchargement afin d’éviter une vidéo limitée à 360p. "
                     "Utilise l’onglet « Outils » pour installer Deno directement.",
                     Gtk.MessageType.ERROR
                 )
@@ -2910,7 +2910,7 @@ class GUIStream(Gtk.Window):
         return False
 
     def show_remux_dialog(self, title="Remux en cours...",
-                          detail="Ne ferme pas GUIStream pendant cette étape."):
+                          detail="Ne ferme pas KageStream pendant cette étape."):
         self.remux_dialog = Gtk.MessageDialog(
             transient_for=self,
             flags=0,
@@ -2957,7 +2957,7 @@ class GUIStream(Gtk.Window):
         )
         if self.active_backend == "yt-dlp":
             dialog.format_secondary_text(
-                "GUIStream demandera à yt-dlp de finaliser proprement le fichier déjà téléchargé."
+                "KageStream demandera à yt-dlp de finaliser proprement le fichier déjà téléchargé."
             )
         elif self.active_backend == "conversion":
             dialog.format_secondary_text(
@@ -3210,10 +3210,10 @@ class GUIStream(Gtk.Window):
             ))
 
             message = (
-                "GUIStream peut installer yt-dlp, Deno, Streamlink et FFmpeg/FFprobe "
+                "KageStream peut installer yt-dlp, Deno, Streamlink et FFmpeg/FFprobe "
                 "dans son dossier utilisateur, sans pacman ni sudo. Chaque téléchargement "
                 "est contrôlé avec une somme SHA-256 publiée par sa source. GTK reste fourni "
-                "par le système ou par l’AppImage GUIStream."
+                "par le système ou par l’AppImage KageStream."
             )
 
             GLib.idle_add(set_rows, rows, streamlink_update_available, message)
@@ -3397,7 +3397,7 @@ class GUIStream(Gtk.Window):
             text="Installer yt-dlp directement ?"
         )
         dialog.format_secondary_text(
-            f"GUIStream va télécharger le binaire officiel {asset_name} depuis GitHub, "
+            f"KageStream va télécharger le binaire officiel {asset_name} depuis GitHub, "
             "vérifier sa somme SHA-256, puis l’installer ici :\n\n"
             f"{user_bin_dir()}\n\n"
             "Aucun paquet ni miroir Arch ne sera utilisé."
@@ -3478,7 +3478,7 @@ class GUIStream(Gtk.Window):
             text="Mettre à jour Streamlink ?"
         )
         dialog.format_secondary_text(
-            "GUIStream va lancer : python -m pip install --upgrade streamlink\n\n"
+            "KageStream va lancer : python -m pip install --upgrade streamlink\n\n"
             "Dans une AppImage, la mise à jour peut ne pas modifier le Streamlink embarqué. "
             "Dans ce cas, il faudra reconstruire l’AppImage."
         )
@@ -3515,7 +3515,7 @@ class GUIStream(Gtk.Window):
                 GLib.idle_add(
                     self.show_message,
                     "Mise à jour terminée",
-                    "Streamlink a été mis à jour. Redémarre GUIStream si nécessaire.",
+                    "Streamlink a été mis à jour. Redémarre KageStream si nécessaire.",
                     Gtk.MessageType.INFO
                 )
             else:
@@ -3653,7 +3653,7 @@ class GUIStream(Gtk.Window):
 
 
 if __name__ == "__main__":
-    win = GUIStream()
+    win = KageStream()
     win.connect("destroy", Gtk.main_quit)
     win.show_all()
     Gtk.main()

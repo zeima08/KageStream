@@ -1,12 +1,12 @@
-# Feuille de route de GUIStream
+# Feuille de route de KageStream
 
-Cette feuille de route présente les évolutions envisagées pour transformer GUIStream en application stable, distribuable et simple à maintenir.
+Cette feuille de route présente les évolutions envisagées pour transformer KageStream en application stable, distribuable et simple à maintenir.
 
 Elle décrit une direction de travail, pas une promesse de date. Les priorités peuvent évoluer selon les retours, les changements de YouTube, yt-dlp, Streamlink et FFmpeg, ainsi que les contraintes de distribution AppImage.
 
 ## Base déjà disponible
 
-GUIStream possède actuellement les fondations suivantes :
+KageStream possède actuellement les fondations suivantes :
 
 - interface GTK 3 ;
 - enregistrement Streamlink et FFmpeg direct ;
@@ -98,7 +98,7 @@ Objectif : dépasser le fonctionnement limité à un seul lien préparé manuell
 
 ### Critères de validation
 
-- La file survit à un redémarrage de GUIStream.
+- La file survit à un redémarrage de KageStream.
 - Une tâche échouée ne bloque pas les suivantes.
 - La sélection multiple fonctionne avec plusieurs fichiers M3U et XSPF.
 - Les programmations utilisent le fuseau horaire local et affichent leur prochaine exécution.
@@ -159,8 +159,8 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 
 - [ ] **Priorité haute** — Automatiser les tests et la construction à chaque version.
 - [ ] **Priorité haute** — Générer les notes de version depuis le changelog validé.
-- [ ] **Priorité haute** — Afficher la version de GUIStream dans l’interface et le diagnostic.
-- [ ] **Priorité moyenne** — Vérifier les nouvelles versions de GUIStream depuis une source configurable.
+- [ ] **Priorité haute** — Afficher la version de KageStream dans l’interface et le diagnostic.
+- [ ] **Priorité moyenne** — Vérifier les nouvelles versions de KageStream depuis une source configurable.
 - [ ] **Priorité moyenne** — Télécharger une nouvelle AppImage sans remplacer automatiquement la version en cours.
 - [ ] **Priorité basse** — Ajouter une signature de publication en plus du SHA-256.
 
@@ -169,7 +169,7 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 - Une version peut être reconstruite à partir de son étiquette Git.
 - Les AppImages démarrent sur plusieurs distributions glibc prises en charge.
 - Les sommes publiées correspondent exactement aux fichiers distribués.
-- La mise à jour de GUIStream exige toujours une confirmation explicite.
+- La mise à jour de KageStream exige toujours une confirmation explicite.
 
 ## Version 1.0 — Version stable
 
@@ -214,7 +214,7 @@ Ces tâches accompagnent toutes les étapes :
 
 ## Hors périmètre
 
-GUIStream n’a pas vocation à :
+KageStream n’a pas vocation à :
 
 - contourner les DRM, abonnements, contrôles d’accès ou restrictions territoriales ;
 - télécharger un contenu sans autorisation lorsque la plateforme ou les droits applicables l’interdisent ;

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="GUIStream"
+APP_NAME="KageStream"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPDIR="$ROOT_DIR/AppDir"
 ICON_SRC="$ROOT_DIR/assets/icons/GUIStream.png"
 APPIMAGETOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
 VENV_DIR="$ROOT_DIR/.venv"
-SOURCE_FILE="$ROOT_DIR/guistream.py"
-SPEC_FILE="$ROOT_DIR/GUIStream.spec"
+SOURCE_FILE="$ROOT_DIR/kagestream.py"
+SPEC_FILE="$ROOT_DIR/kagestream.spec"
 OUTPUT_APPIMAGE="$ROOT_DIR/GUIStream-x86_64.AppImage"
 
 echo "== GUIStream AppImage build =="
@@ -182,24 +182,24 @@ EOF
 write_desktop_file() {
     echo "== Génération du fichier .desktop =="
 
-    cat > "$APPDIR/GUIStream.desktop" <<EOF
+    cat > "$APPDIR/KageStream.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=GUIStream
-GenericName=Stream Recorder
-Comment=Graphical Streamlink recorder
-Exec=GUIStream
-Icon=GUIStream
+Name=kagestream
+GenericName=Simple but powerful stream recorder
+Comment=Graphical Streamlink recorder   
+Exec=KageStream
+Icon=KageStream
 Categories=AudioVideo;Recorder;Video;
 Terminal=false
 StartupNotify=true
 EOF
 
     mkdir -p "$APPDIR/usr/share/applications"
-    cp "$APPDIR/GUIStream.desktop" "$APPDIR/usr/share/applications/GUIStream.desktop"
+    cp "$APPDIR/KageStream.desktop" "$APPDIR/usr/share/applications/KageStream.desktop"
 
     if command_exists desktop-file-validate; then
-        desktop-file-validate "$APPDIR/GUIStream.desktop" || true
+        desktop-file-validate "$APPDIR/KageStream.desktop" || true
     fi
 }
 

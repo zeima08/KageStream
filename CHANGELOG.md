@@ -1,6 +1,6 @@
-# Journal des modifications de GUIStream
+# Journal des modifications de KageStream
 
-Toutes les évolutions importantes de GUIStream sont répertoriées dans ce fichier.
+Toutes les évolutions importantes de KageStream sont répertoriées dans ce fichier.
 
 Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Les versions historiques 0.1 à 0.5 ne possédaient pas de date connue ; elles sont conservées sans en inventer.
 
@@ -41,12 +41,12 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 - Résolution des chemins relatifs depuis le dossier de la liste.
 - Suppression des liens dupliqués au chargement.
 - Nouvelle fenêtre affichant toutes les sources disponibles.
-- Filtrage par fichier, recherche par nom, groupe ou URL et actualisation des listes sans redémarrer GUIStream.
+- Filtrage par fichier, recherche par nom, groupe ou URL et actualisation des listes sans redémarrer KageStream.
 - Lancement de l’enregistrement de la source sélectionnée en TS, MKV ou MP4.
 
 #### Dépendances
 
-- Recherche prioritaire des outils dans le dossier utilisateur de GUIStream, puis dans le dossier `bin` de l’application et enfin dans le `PATH`.
+- Recherche prioritaire des outils dans le dossier utilisateur de KageStream, puis dans le dossier `bin` de l’application et enfin dans le `PATH`.
 - Gestionnaire de dépendances accessible depuis la fenêtre **Mises à jour**.
 - Bouton d’installation de tous les éléments manquants.
 - Installation ou mise à jour individuelle de yt-dlp, Deno, FFmpeg/FFprobe et Streamlink.
@@ -74,7 +74,7 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 - Le bouton principal indique maintenant **Télécharger / enregistrer** afin de couvrir les vidéos, les lives et les flux classiques.
 - Le mode automatique choisit yt-dlp pour YouTube, Streamlink pour les sites compatibles et FFmpeg pour les sources directes.
 - Les noms de fichiers sont nettoyés avant leur utilisation et restent limités à une longueur raisonnable.
-- Les dépendances installées par GUIStream sont conservées hors du montage en lecture seule de l’AppImage.
+- Les dépendances installées par KageStream sont conservées hors du montage en lecture seule de l’AppImage.
 
 ## [0.5.0]
 
@@ -104,4 +104,4 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 
 ### Ajouté
 
-- Première interface GTK de GUIStream.
+- Première interface GTK de KageStream.
