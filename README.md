@@ -13,10 +13,15 @@ L’application accepte les liens YouTube, les sites reconnus par Streamlink, le
 - Choix et intégration des sous-titres manuels ou automatiques.
 - Intégration des métadonnées, tags, miniatures et fichiers `.info.json`.
 - Enregistrement des flux classiques en TS, MKV ou MP4.
+- Arrêt robuste des enregistrements (SIGINT puis SIGTERM puis SIGKILL) avec vérification que le fichier TS est bien fermé.
+- Reconnexion automatique en cas de coupure momentanée d’un flux Streamlink ou FFmpeg direct, pendant 2 minutes avant abandon.
+- Programmation d’un enregistrement avec heure de début et de fin, pour Streamlink, l’IPTV et FFmpeg direct.
+- Vérification optionnelle du fichier TS (paquets corrompus, erreurs DTS, timestamps invalides) avant le remux.
 - Détection et exploration des listes M3U, M3U8 et XSPF placées à côté de l’application.
 - Recherche des chaînes et groupes contenus dans les listes locales.
 - Diagnostic des dépendances et analyse de la santé du fichier enregistré.
 - Installation directe des dépendances utilisateur sans `sudo` ni gestionnaire de paquets.
+- Horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale.
 
 ## Démarrage
 
@@ -107,7 +112,24 @@ Le bouton **Stop** envoie un arrêt propre à yt-dlp. KageStream tente ensuite d
 
 KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien, FFprobe puis FFmpeg vérifient s’il s’agit d’une source multimédia directe. Les flux HTTP et HTTPS bénéficient d’options de reconnexion.
 
-La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo. Si MP4 refuse certains codecs, KageStream propose un repli vers MKV et conserve toujours le TS original en cas d’échec.
+Si le flux s’interrompt brutalement en cours d’enregistrement (coupure réseau, source IPTV momentanément indisponible), KageStream retente automatiquement de retrouver la source toutes les 15 secondes pendant 2 minutes avant d’abandonner. Si la source revient, l’enregistrement reprend et les segments récupérés sont fusionnés dans le fichier final ; sinon, l’enregistrement s’arrête et conserve les données déjà capturées.
+
+Le bouton **Stop** envoie un `SIGINT`, attend quelques secondes, puis escalade en `SIGTERM` et enfin `SIGKILL` si le processus ne se termine pas de lui-même. KageStream vérifie ensuite que le fichier TS est bien fermé avant de continuer.
+
+À la fin d’un enregistrement destiné à MKV ou MP4, une boîte de dialogue propose de **vérifier le fichier TS** (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de **remuxer directement**.
+
+La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo, en plusieurs paliers de repli : vidéo + audio + sous-titres, puis vidéo + audio seuls si le télétexte ou les sous-titres DVB du multiplex sont incompatibles avec le conteneur, puis un mapping minimal en dernier recours. Le remux corrige aussi automatiquement les flux audio AAC de diffusion DVB dépourvus d’un en-tête ADTS exploitable. Si MP4 refuse certains codecs malgré ces replis, KageStream propose un passage vers MKV et conserve toujours le TS original en cas d’échec.
+
+## Programmer un enregistrement
+
+Dans l’onglet **Flux & IPTV**, la section **Programmation d’un enregistrement** permet de définir :
+
+- une **heure de début** (format `HH:MM` ou `HH:MM:SS`) ;
+- une **heure de fin** dans le même format.
+
+Colle le lien à enregistrer, renseigne les deux heures puis clique sur **Programmer**. KageStream attend automatiquement l’heure de début, lance l’enregistrement, puis l’arrête à l’heure de fin en suivant exactement la même procédure robuste que le bouton **Stop**. Cliquer à nouveau sur le bouton (devenu **Annuler la programmation**) annule l’attente avant son démarrage.
+
+La programmation fonctionne avec Streamlink, l’IPTV et FFmpeg direct. Si l’heure de fin est antérieure à l’heure de début, KageStream programme l’arrêt le lendemain.
 
 ## Utiliser des listes M3U et XSPF
 
@@ -159,9 +181,9 @@ Utilise **Mises à jour → Installer yt-dlp directement**. Le binaire autonome 
 
 Vérifie que le fichier possède bien l’extension `.m3u`, `.m3u8` ou `.xspf` et qu’il se trouve à côté du fichier AppImage, pas dans son montage temporaire. Clique ensuite sur **Actualiser** dans la fenêtre des listes.
 
-### Le remux MP4 échoue
+### Le remux MP4 ou MKV échoue
 
-Certains codecs ne sont pas compatibles avec le conteneur MP4. Accepte le repli MKV proposé par KageStream, ou conserve le fichier TS créé pendant la capture.
+KageStream retente automatiquement avec un mapping réduit (sous-titres puis pistes secondaires exclus) avant d’abandonner : le télétexte, les sous-titres DVB ou un flux audio AAC de diffusion mal formé sont les causes les plus fréquentes d’un multiplex IPTV/DVB incompatible avec un conteneur. Si toutes les tentatives échouent malgré tout, accepte le repli MKV proposé pour un MP4, ou conserve le fichier TS créé pendant la capture — il n’est jamais supprimé. Le détail des tentatives et des erreurs FFmpeg reste visible dans le journal technique.
 
 ### Streamlink ou FFmpeg n’est pas détecté
 
@@ -175,6 +197,7 @@ Ouvre **Mises à jour** et utilise le bouton global d’installation. Le chemin 
 - L’installation directe de Streamlink et FFmpeg est actuellement destinée à Linux x86_64 et ARM64.
 - L’AppImage Streamlink nécessite une distribution Linux basée sur glibc.
 - Une interruption brutale du système peut laisser un fichier `.part` ou un TS incomplet, même si KageStream essaie de finaliser proprement les arrêts demandés depuis l’interface.
+- La reconnexion automatique et la programmation d’un enregistrement fonctionnent avec Streamlink, l’IPTV et FFmpeg direct, mais pas encore avec YouTube.
 
 ## Historique
 

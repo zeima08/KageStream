@@ -17,7 +17,8 @@ import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote, urlparse
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
@@ -47,6 +48,11 @@ FFMPEG_HEALTH_PATTERNS = [
 ]
 
 
+RECONNECT_WINDOW_SECONDS = 120
+RECONNECT_RETRY_INTERVAL = 15
+RECONNECT_GRACE_PERIOD = 5
+
+
 def is_frozen():
     return getattr(sys, "frozen", False)
 
@@ -56,7 +62,6 @@ def app_dir():
 
 
 def external_app_dir():
-    """Dossier contenant l'AppImage, ou le script hors AppImage."""
     appimage_path = os.environ.get("APPIMAGE")
     if appimage_path:
         return os.path.dirname(os.path.realpath(appimage_path))
@@ -65,7 +70,6 @@ def external_app_dir():
 
 
 def user_data_dir():
-    """Dossier inscriptible et persistant, y compris depuis une AppImage."""
     if sys.platform == "win32":
         base = (
             os.environ.get("LOCALAPPDATA")
@@ -100,7 +104,6 @@ def find_tool(name):
 
 
 def ytdlp_release_asset():
-    """Retourne le binaire autonome officiel adapté à la machine."""
     machine = platform.machine().lower()
 
     if sys.platform == "win32":
@@ -136,7 +139,6 @@ def ytdlp_expected_checksum(checksums_text, asset_name):
 
 
 def download_ytdlp_binary(progress_callback=None, timeout=30):
-    """Télécharge, vérifie et installe atomiquement le binaire officiel yt-dlp."""
     asset_name, installed_name = ytdlp_release_asset()
     target_dir = user_bin_dir()
     target_path = os.path.join(target_dir, installed_name)
@@ -842,6 +844,11 @@ class KageStream(Gtk.Window):
         self.ytdlp_installing = False
         self.dependency_installing = False
 
+        self.last_ts_analysis = {}
+        self.schedule_thread = None
+        self.schedule_cancelled = False
+        self.schedule_active = False
+
         self.stream_warning_count = 0
         self.stream_health = "Non analysé"
         self.last_health_report = "Aucun enregistrement analysé."
@@ -857,6 +864,8 @@ class KageStream(Gtk.Window):
         self.check_dependencies(silent=True)
         self.log_startup()
         self.refresh_local_playlist_files(log_result=True)
+        self.update_clocks()
+        GLib.timeout_add(1000, self.update_clocks)
 
     def build_ui(self):
         main = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -873,12 +882,18 @@ class KageStream(Gtk.Window):
         self.status = Gtk.Label(label="Prêt.", xalign=0)
         main.pack_start(self.status, False, False, 0)
 
+        clocks_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=18)
+        self.clock_local_label = Gtk.Label(label="Heure locale : --:--:--", xalign=0)
+        self.clock_tokyo_label = Gtk.Label(label="Heure Tokyo : --:--:--", xalign=0)
+        clocks_box.pack_start(self.clock_local_label, False, False, 0)
+        clocks_box.pack_start(self.clock_tokyo_label, False, False, 0)
+        main.pack_start(clocks_box, False, False, 0)
+
         self.notebook = Gtk.Notebook()
         self.notebook.set_scrollable(True)
         self.notebook.connect("switch-page", self.on_tab_changed)
         main.pack_start(self.notebook, False, False, 0)
 
-        # Onglet Flux & IPTV : Streamlink, Twitch et sources directes FFmpeg.
         stream_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         stream_page.set_border_width(12)
 
@@ -951,9 +966,37 @@ class KageStream(Gtk.Window):
         stream_help.set_line_wrap(True)
         stream_page.pack_start(stream_help, False, False, 0)
 
+        schedule_frame = Gtk.Frame(label="Programmation d’un enregistrement")
+        schedule_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        schedule_box.set_border_width(10)
+        schedule_frame.add(schedule_box)
+
+        schedule_grid = Gtk.Grid(column_spacing=14, row_spacing=8)
+        schedule_box.pack_start(schedule_grid, False, False, 0)
+
+        self.schedule_start_entry = Gtk.Entry()
+        self.schedule_start_entry.set_placeholder_text("HH:MM ou HH:MM:SS")
+
+        self.schedule_end_entry = Gtk.Entry()
+        self.schedule_end_entry.set_placeholder_text("HH:MM ou HH:MM:SS")
+
+        schedule_grid.attach(Gtk.Label(label="Heure de début", xalign=0), 0, 0, 1, 1)
+        schedule_grid.attach(self.schedule_start_entry, 1, 0, 1, 1)
+        schedule_grid.attach(Gtk.Label(label="Heure de fin", xalign=0), 0, 1, 1, 1)
+        schedule_grid.attach(self.schedule_end_entry, 1, 1, 1, 1)
+
+        self.schedule_button = Gtk.Button(label="Programmer")
+        self.schedule_button.connect("clicked", self.schedule_button_clicked)
+        schedule_box.pack_start(self.schedule_button, False, False, 0)
+
+        self.schedule_status_label = Gtk.Label(label="Aucune programmation active.", xalign=0)
+        self.schedule_status_label.set_line_wrap(True)
+        schedule_box.pack_start(self.schedule_status_label, False, False, 0)
+
+        stream_page.pack_start(schedule_frame, False, False, 0)
+
         self.notebook.append_page(stream_page, Gtk.Label(label="Flux & IPTV"))
 
-        # Onglet YouTube : interface yt-dlp indépendante des flux classiques.
         youtube_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         youtube_page.set_border_width(12)
 
@@ -1063,7 +1106,6 @@ class KageStream(Gtk.Window):
 
         self.notebook.append_page(youtube_page, Gtk.Label(label="YouTube"))
 
-        # Onglet listes locales. Le navigateur détaillé reste dans sa grande fenêtre dédiée.
         playlist_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         playlist_page.set_border_width(18)
 
@@ -1095,7 +1137,6 @@ class KageStream(Gtk.Window):
 
         self.notebook.append_page(playlist_page, Gtk.Label(label="Listes locales"))
 
-        # Onglet outils : diagnostic et gestionnaire de dépendances.
         tools_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         tools_page.set_border_width(18)
 
@@ -2348,6 +2389,133 @@ class KageStream(Gtk.Window):
             GLib.idle_add(self.open_folder_button.set_sensitive, True)
             self.set_status("Prêt.")
 
+    def update_clocks(self):
+        now_local = datetime.now().astimezone()
+        self.clock_local_label.set_text(f"Heure locale : {now_local.strftime('%H:%M:%S')}")
+        try:
+            now_tokyo = datetime.now(ZoneInfo("Asia/Tokyo"))
+            self.clock_tokyo_label.set_text(f"Heure Tokyo : {now_tokyo.strftime('%H:%M:%S')}")
+        except Exception as e:
+            self.clock_tokyo_label.set_text("Heure Tokyo : indisponible")
+            self.log_text(f"[INFO] Horloge Tokyo indisponible : {e}")
+        return True
+
+    def parse_time_of_day(self, text):
+        text = (text or "").strip()
+        for fmt in ("%H:%M:%S", "%H:%M"):
+            try:
+                return datetime.strptime(text, fmt).time()
+            except ValueError:
+                continue
+        return None
+
+    def next_occurrence(self, time_of_day, reference):
+        candidate = reference.replace(
+            hour=time_of_day.hour,
+            minute=time_of_day.minute,
+            second=time_of_day.second,
+            microsecond=0
+        )
+        if candidate <= reference:
+            candidate += timedelta(days=1)
+        return candidate
+
+    def schedule_button_clicked(self, button):
+        if self.schedule_active:
+            self.schedule_cancelled = True
+            self.log_text("[INFO] Annulation de la programmation demandée.")
+            self.schedule_status_label.set_text("Annulation en cours...")
+            return
+
+        if self.process:
+            self.show_message(
+                "Enregistrement en cours",
+                "Arrête l’enregistrement actuel avant de programmer un nouvel enregistrement.",
+                Gtk.MessageType.WARNING
+            )
+            return
+
+        url = self.url_entry.get_text().strip()
+        if not url:
+            self.show_message(
+                "Lien manquant",
+                "Colle un lien Streamlink, IPTV ou FFmpeg avant de programmer l’enregistrement.",
+                Gtk.MessageType.WARNING
+            )
+            return
+
+        start_time = self.parse_time_of_day(self.schedule_start_entry.get_text())
+        end_time = self.parse_time_of_day(self.schedule_end_entry.get_text())
+
+        if not start_time or not end_time:
+            self.show_message(
+                "Heures invalides",
+                "Utilise le format HH:MM ou HH:MM:SS pour l’heure de début et l’heure de fin.",
+                Gtk.MessageType.ERROR
+            )
+            return
+
+        now = datetime.now()
+        start_at = self.next_occurrence(start_time, now)
+        end_at = self.next_occurrence(end_time, start_at)
+
+        self.schedule_cancelled = False
+        self.schedule_active = True
+        self.schedule_button.set_label("Annuler la programmation")
+        self.schedule_status_label.set_text(
+            f"Programmé — début : {start_at.strftime('%Y-%m-%d %H:%M:%S')}, "
+            f"fin : {end_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        self.log_text(f"[INFO] Programmation enregistrée — début {start_at}, fin {end_at}")
+
+        self.schedule_thread = threading.Thread(
+            target=self.schedule_worker,
+            args=(start_at, end_at),
+            daemon=True
+        )
+        self.schedule_thread.start()
+
+    def _launch_scheduled_recording(self):
+        self.notebook.set_current_page(0)
+        self.start_recording(self.start_button)
+        return False
+
+    def schedule_worker(self, start_at, end_at):
+        try:
+            while True:
+                remaining = (start_at - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    break
+                if self.schedule_cancelled:
+                    self.log_text("[INFO] Programmation annulée avant le démarrage.")
+                    return
+                time.sleep(min(remaining, 1))
+
+            self.log_text("[INFO] Heure de début atteinte — lancement de l’enregistrement programmé.")
+            GLib.idle_add(self._launch_scheduled_recording)
+
+            wait_deadline = time.time() + 20
+            while time.time() < wait_deadline and not self.process and not self.schedule_cancelled:
+                time.sleep(0.5)
+
+            while datetime.now() < end_at:
+                if self.schedule_cancelled or not self.process:
+                    break
+                time.sleep(1)
+
+            if self.process and not self.schedule_cancelled:
+                self.log_text("[INFO] Heure de fin atteinte — arrêt automatique programmé.")
+                GLib.idle_add(self.perform_stop)
+
+        except Exception as e:
+            self.log_text(f"[INFO] Erreur de programmation : {e}")
+
+        finally:
+            self.schedule_active = False
+            self.schedule_cancelled = False
+            GLib.idle_add(self.schedule_button.set_label, "Programmer")
+            GLib.idle_add(self.schedule_status_label.set_text, "Aucune programmation active.")
+
     def start_recording(self, button):
         context = self.active_context()
         if context not in ("stream", "youtube"):
@@ -2489,6 +2657,7 @@ class KageStream(Gtk.Window):
 
         self.log_text("")
         self.log_text("===== Analyse santé du fichier =====")
+        self.log_text("[INFO] Analyse du TS")
         self.log_text(f"Fichier analysé : {file_path}")
 
         cmd = [self.ffmpeg, "-v", "warning", "-i", file_path, "-f", "null", "-"]
@@ -2497,6 +2666,9 @@ class KageStream(Gtk.Window):
 
         issues = []
         serious_issues = []
+        corrupted_packets = []
+        dts_errors = []
+        timestamp_errors = []
 
         try:
             proc = subprocess.Popen(
@@ -2517,11 +2689,26 @@ class KageStream(Gtk.Window):
                 lower = clean.lower()
                 if any(pattern in lower for pattern in FFMPEG_HEALTH_PATTERNS):
                     serious_issues.append(clean)
+                if "corrupt" in lower:
+                    corrupted_packets.append(clean)
+                if "dts" in lower:
+                    dts_errors.append(clean)
+                if "timestamp" in lower or "pts" in lower:
+                    timestamp_errors.append(clean)
 
             proc.wait()
 
             if proc.returncode not in (0, None):
                 serious_issues.append(f"FFmpeg a terminé avec le code {proc.returncode}")
+
+            self.last_ts_analysis = {
+                "file": file_path,
+                "issues": issues,
+                "serious_issues": serious_issues,
+                "corrupted_packets": corrupted_packets,
+                "dts_errors": dts_errors,
+                "timestamp_errors": timestamp_errors,
+            }
 
             if serious_issues:
                 self.last_health_report = (
@@ -2548,59 +2735,187 @@ class KageStream(Gtk.Window):
             self.last_health_report = f"Analyse impossible : {e}"
             self.log_text(self.last_health_report)
             self.set_health("analyse impossible")
+            self.last_ts_analysis = {}
             return False
+
+    def build_record_command(self, url, quality, ts_file, twitch_preference="h264"):
+        if self.streamlink_can_handle_url(url):
+            backend = "Streamlink"
+            cmd = [self.streamlink]
+            cmd.extend(self.streamlink_codec_args(url, twitch_preference))
+            cmd.extend([url, quality, "-o", ts_file])
+            return backend, cmd, True, ""
+
+        valid, details = self.probe_direct_source(url)
+        if not valid:
+            return None, None, False, details
+
+        cmd = [
+            self.ffmpeg,
+            "-y",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel", "warning",
+            "-rw_timeout", "15000000"
+        ]
+
+        if url.lower().startswith(("http://", "https://")):
+            cmd.extend([
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_delay_max", "5"
+            ])
+
+        cmd.extend([
+            "-i", url,
+            "-map", "0",
+            "-c", "copy",
+            "-f", "mpegts",
+            ts_file
+        ])
+        return "FFmpeg direct", cmd, True, details
+
+    def run_capture_process(self, cmd, backend):
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+        self.process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            creationflags=creationflags
+        )
+        return self.read_capture_process(backend)
+
+    def read_capture_process(self, backend):
+        for line in self.process.stdout:
+            clean = line.rstrip()
+            self.log_text(clean)
+            self.inspect_streamlink_line(clean)
+
+        self.process.wait()
+        return self.process.returncode
+
+    def attempt_reconnect(self, url, quality, ts_file, twitch_preference, segment_files, previous_backend):
+        self.set_status("Flux interrompu — tentative de reconnexion...")
+        self.log_text(
+            f"[INFO] Flux {previous_backend} interrompu — tentative de reconnexion "
+            f"pendant {RECONNECT_WINDOW_SECONDS}s (sauf arrêt manuel)."
+        )
+        deadline = time.time() + RECONNECT_WINDOW_SECONDS
+
+        while time.time() < deadline and not self.user_stopped:
+            remaining = max(0, int(deadline - time.time()))
+            self.log_text(f"[INFO] Nouvelle tentative de reconnexion ({remaining}s avant abandon)")
+
+            segment_path = f"{os.path.splitext(ts_file)[0]}.reconnect{len(segment_files)}.ts"
+            backend, cmd, valid, details = self.build_record_command(
+                url, quality, segment_path, twitch_preference
+            )
+
+            if not valid:
+                self._sleep_until(min(time.time() + RECONNECT_RETRY_INTERVAL, deadline))
+                continue
+
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+            try:
+                probe_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    creationflags=creationflags
+                )
+            except Exception as e:
+                self.log_text(f"[INFO] Reconnexion impossible : {e}")
+                self._sleep_until(min(time.time() + RECONNECT_RETRY_INTERVAL, deadline))
+                continue
+
+            self.process = probe_process
+            self._sleep_until(min(time.time() + RECONNECT_GRACE_PERIOD, deadline))
+
+            has_data = os.path.exists(segment_path) and os.path.getsize(segment_path) > 0
+            still_running = probe_process.poll() is None
+
+            if has_data and still_running and not self.user_stopped:
+                self.log_text(f"[INFO] Source retrouvée — reprise de l’enregistrement ({backend}).")
+                segment_files.append(segment_path)
+                self.current_ts_file = segment_path
+                return backend
+
+            self.escalate_process_stop(probe_process)
+            if os.path.exists(segment_path) and os.path.getsize(segment_path) == 0:
+                try:
+                    os.remove(segment_path)
+                except OSError:
+                    pass
+
+            if self.user_stopped:
+                break
+
+            self._sleep_until(min(time.time() + RECONNECT_RETRY_INTERVAL, deadline))
+
+        if not self.user_stopped:
+            self.log_text(
+                f"[INFO] Reconnexion impossible après {RECONNECT_WINDOW_SECONDS}s — "
+                "arrêt de l’enregistrement."
+            )
+        return None
+
+    def _sleep_until(self, until):
+        while time.time() < until and not self.user_stopped:
+            time.sleep(min(0.5, max(0, until - time.time())))
+
+    def merge_segments(self, segment_files):
+        existing = [path for path in segment_files if path and os.path.exists(path)]
+        if not existing:
+            return segment_files[0] if segment_files else None
+
+        primary = existing[0]
+        extras = existing[1:]
+
+        if extras:
+            self.log_text(f"[INFO] Fusion de {len(existing)} segments après reconnexion(s).")
+            try:
+                with open(primary, "ab") as output:
+                    for extra in extras:
+                        with open(extra, "rb") as part:
+                            shutil.copyfileobj(part, output)
+                        os.remove(extra)
+                self.log_text(f"[INFO] Segments fusionnés dans : {primary}")
+            except Exception as e:
+                self.log_text(f"[INFO] Fusion des segments impossible : {e}")
+
+        return primary
 
     def record_worker(self, url, quality, fmt, ts_file, profile="copy",
                       twitch_preference="h264"):
+        segment_files = [ts_file]
         try:
             self.log_text("")
 
-            if self.streamlink_can_handle_url(url):
-                backend = "Streamlink"
-                cmd = [self.streamlink]
-                cmd.extend(self.streamlink_codec_args(url, twitch_preference))
-                cmd.extend([url, quality, "-o", ts_file])
-            else:
-                self.log_text("Streamlink ne gère pas ce lien. Recherche d’un flux direct...")
-                valid, details = self.probe_direct_source(url)
+            backend, cmd, valid, details = self.build_record_command(
+                url, quality, ts_file, twitch_preference
+            )
 
-                if not valid:
-                    self.log_text(f"Source refusée : {details}")
-                    self.set_health("problème détecté", "source non reconnue")
-                    GLib.idle_add(
-                        self.show_message,
-                        "Source non reconnue",
-                        "Le lien n’est reconnu ni par Streamlink ni comme flux direct FFmpeg.",
-                        Gtk.MessageType.ERROR
-                    )
-                    return
+            if not valid:
+                self.log_text(f"Source refusée : {details}")
+                self.set_health("problème détecté", "source non reconnue")
+                GLib.idle_add(
+                    self.show_message,
+                    "Source non reconnue",
+                    "Le lien n’est reconnu ni par Streamlink ni comme flux direct FFmpeg.",
+                    Gtk.MessageType.ERROR
+                )
+                return
 
-                backend = "FFmpeg direct"
+            if backend == "FFmpeg direct":
                 self.log_text(f"Flux direct détecté : {details}")
-
-                cmd = [
-                    self.ffmpeg,
-                    "-y",
-                    "-nostdin",
-                    "-hide_banner",
-                    "-loglevel", "warning",
-                    "-rw_timeout", "15000000"
-                ]
-
-                if url.lower().startswith(("http://", "https://")):
-                    cmd.extend([
-                        "-reconnect", "1",
-                        "-reconnect_streamed", "1",
-                        "-reconnect_delay_max", "5"
-                    ])
-
-                cmd.extend([
-                    "-i", url,
-                    "-map", "0",
-                    "-c", "copy",
-                    "-f", "mpegts",
-                    ts_file
-                ])
 
             self.active_backend = backend
             self.log_text(f"Commande {backend} :")
@@ -2608,21 +2923,21 @@ class KageStream(Gtk.Window):
             self.recording_start = time.time()
             self.set_status(f"Enregistrement en cours — {backend}...")
 
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
+            returncode = self.run_capture_process(cmd, backend)
 
-            for line in self.process.stdout:
-                clean = line.rstrip()
-                self.log_text(clean)
-                self.inspect_streamlink_line(clean)
+            while not self.user_stopped and returncode != 0:
+                backend = self.attempt_reconnect(
+                    url, quality, ts_file, twitch_preference, segment_files, backend
+                )
+                if backend is None:
+                    break
+                self.active_backend = backend
+                self.set_status(f"Enregistrement en cours — {backend} (reprise)...")
+                returncode = self.read_capture_process(backend)
 
-            self.process.wait()
-            returncode = self.process.returncode
-            has_data = os.path.exists(ts_file) and os.path.getsize(ts_file) > 0
+            ts_file = self.merge_segments(segment_files)
+            self.current_ts_file = ts_file
+            has_data = bool(ts_file) and os.path.exists(ts_file) and os.path.getsize(ts_file) > 0
 
             if self.user_stopped:
                 self.log_text("Enregistrement arrêté par l’utilisateur.")
@@ -2651,10 +2966,11 @@ class KageStream(Gtk.Window):
                 self.set_health("problème détecté", f"{backend} a quitté avec une erreur")
 
         except Exception as e:
+            merged = self.merge_segments(segment_files)
             if self.user_stopped:
                 self.log_text("Enregistrement arrêté par l’utilisateur.")
-                if os.path.exists(ts_file) and os.path.getsize(ts_file) > 0:
-                    self.finalize_capture(ts_file, fmt, profile)
+                if merged and os.path.exists(merged) and os.path.getsize(merged) > 0:
+                    self.finalize_capture(merged, fmt, profile)
             else:
                 self.log_text(f"Erreur : {e}")
 
@@ -2674,7 +2990,7 @@ class KageStream(Gtk.Window):
             self.final_file = ts_file
             self.log_text(f"Fichier final : {ts_file}")
         else:
-            self.remux(ts_file, fmt)
+            GLib.idle_add(self.ask_verify_before_remux, ts_file, fmt)
 
     def ffmpeg_encoder_available(self, encoder):
         if not self.ffmpeg:
@@ -2839,56 +3155,181 @@ class KageStream(Gtk.Window):
             return
 
         output = os.path.splitext(ts_file)[0] + "." + fmt
-        cmd = [self.ffmpeg, "-y", "-i", ts_file, "-c", "copy", output]
+
+        # Chaque palier réduit un peu plus les flux/options pour maximiser les
+        # chances de produire un fichier, quel que soit le multiplex DVB/IPTV
+        # d'origine : télétexte et sous-titres DVB font souvent planter le muxer
+        # Matroska/MP4, et l'AAC de diffusion DVB arrive fréquemment sans ADTS/
+        # extradata exploitable tel quel (d'où le filtre aac_adtstoasc).
+        mapping_attempts = [
+            (
+                ["-map", "0:v?", "-map", "0:a?", "-map", "0:s?", "-c", "copy", "-bsf:a", "aac_adtstoasc"],
+                "vidéo + audio + sous-titres"
+            ),
+            (
+                ["-map", "0:v:0?", "-map", "0:a?", "-c", "copy", "-bsf:a", "aac_adtstoasc"],
+                "vidéo + audio, sous-titres exclus"
+            ),
+            (
+                ["-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy"],
+                "vidéo + première piste audio, sans filtre"
+            ),
+        ]
 
         GLib.idle_add(self.show_remux_dialog)
 
         self.log_text("")
-        self.log_text("Commande FFmpeg :")
-        self.log_text(" ".join(cmd))
+        self.log_text("[INFO] Remux lancé")
 
+        returncode = None
         try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
+            for index, (extra_args, label) in enumerate(mapping_attempts):
+                cmd = [self.ffmpeg, "-y", "-i", ts_file] + extra_args + [output]
 
-            for line in proc.stdout:
-                self.log_text(line.rstrip())
+                self.log_text(
+                    "Commande FFmpeg :" if index == 0
+                    else f"Nouvelle tentative ({label}) :"
+                )
+                self.log_text(" ".join(cmd))
 
-            proc.wait()
-
-            if proc.returncode == 0:
-                self.final_file = output
-                self.log_text(f"Remux terminé : {output}")
-                GLib.idle_add(
-                    self.close_remux_dialog,
-                    "Remux : fait",
-                    f"Fichier final : {output}",
-                    Gtk.MessageType.INFO
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True
                 )
 
-            elif fmt == "mp4":
+                for line in proc.stdout:
+                    self.log_text(line.rstrip())
+
+                proc.wait()
+                returncode = proc.returncode
+
+                if returncode == 0 and os.path.isfile(output) and os.path.getsize(output) > 0:
+                    self.final_file = output
+                    self.log_text(f"Remux terminé : {output}")
+                    self.log_text("[INFO] Remux terminé")
+                    GLib.idle_add(
+                        self.close_remux_dialog,
+                        "Remux : fait",
+                        f"Fichier final : {output}",
+                        Gtk.MessageType.INFO
+                    )
+                    return
+
+                if index < len(mapping_attempts) - 1:
+                    self.log_text(
+                        "Remux impossible avec ce mapping (flux incompatibles avec le conteneur). "
+                        "Nouvelle tentative avec un mapping réduit..."
+                    )
+
+            if fmt == "mp4":
                 self.log_text("MP4 impossible. Proposition de remux en MKV.")
                 GLib.idle_add(self.ask_mkv_fallback, ts_file)
-
             else:
                 GLib.idle_add(
                     self.close_remux_dialog,
                     "Remux impossible",
-                    "FFmpeg n’a pas réussi à remuxer ce fichier. Le TS est conservé.",
+                    "FFmpeg n’a pas réussi à remuxer ce fichier, même avec un mapping réduit. "
+                    "Le TS est conservé.",
                     Gtk.MessageType.ERROR
                 )
 
-        except Exception:
+        except Exception as e:
+            self.log_text(f"Erreur pendant le remux : {e}")
             GLib.idle_add(
                 self.close_remux_dialog,
                 "Remux impossible",
                 "Une erreur est survenue pendant le remux. Le TS est conservé.",
                 Gtk.MessageType.ERROR
             )
+
+    def ask_verify_before_remux(self, ts_file, fmt):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Enregistrement terminé"
+        )
+        dialog.format_secondary_text(
+            "Veux-tu vérifier le fichier TS avant le remux, ou remuxer directement ?"
+        )
+        dialog.add_button("Vérifier le TS", Gtk.ResponseType.YES)
+        dialog.add_button("Remux directement", Gtk.ResponseType.NO)
+
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.YES:
+            threading.Thread(target=self.verify_ts_worker, args=(ts_file, fmt), daemon=True).start()
+        else:
+            threading.Thread(target=self.remux, args=(ts_file, fmt), daemon=True).start()
+
+        return False
+
+    def verify_ts_worker(self, ts_file, fmt):
+        try:
+            self.set_status("Analyse complète du TS...")
+            GLib.idle_add(
+                self.show_remux_dialog,
+                "Vérification du TS en cours...",
+                "Analyse complète avec FFmpeg. Ne ferme pas KageStream pendant cette étape."
+            )
+
+            healthy = self.check_recording_health(ts_file)
+            report = self.last_ts_analysis or {}
+
+            summary = "\n".join([
+                f"Paquets corrompus détectés : {len(report.get('corrupted_packets', []))}",
+                f"Erreurs DTS détectées : {len(report.get('dts_errors', []))}",
+                f"Timestamps invalides détectés : {len(report.get('timestamp_errors', []))}",
+                f"Alertes sérieuses au total : {len(report.get('serious_issues', []))}",
+                "",
+                "État général : " + ("OK" if healthy else "problème détecté"),
+            ])
+
+            GLib.idle_add(
+                self.close_remux_dialog,
+                "Analyse du TS terminée",
+                summary,
+                Gtk.MessageType.INFO if healthy else Gtk.MessageType.WARNING
+            )
+            GLib.idle_add(self.ask_continue_after_verification, ts_file, fmt)
+        except Exception as e:
+            self.log_text(f"[INFO] Erreur pendant l’analyse du TS : {e}")
+            GLib.idle_add(
+                self.close_remux_dialog,
+                "Analyse impossible",
+                f"Une erreur est survenue pendant l’analyse. Le TS est conservé :\n{ts_file}",
+                Gtk.MessageType.ERROR
+            )
+
+    def ask_continue_after_verification(self, ts_file, fmt):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text="Analyse terminée"
+        )
+        dialog.format_secondary_text(
+            "Veux-tu continuer le remux ou conserver uniquement le fichier TS ?"
+        )
+        dialog.add_button("Continuer le remux", Gtk.ResponseType.YES)
+        dialog.add_button("Conserver le TS", Gtk.ResponseType.NO)
+
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.YES:
+            threading.Thread(target=self.remux, args=(ts_file, fmt), daemon=True).start()
+        else:
+            self.final_file = ts_file
+            self.log_text(f"Fichier TS conservé sans remux : {ts_file}")
+            self.show_message("Fichier TS conservé", f"Fichier conservé :\n{ts_file}", Gtk.MessageType.INFO)
+
+        return False
 
     def ask_mkv_fallback(self, ts_file):
         if self.remux_dialog:
@@ -2977,19 +3418,102 @@ class KageStream(Gtk.Window):
         dialog.destroy()
 
         if response == Gtk.ResponseType.YES:
-            self.user_stopped = True
             self.log_text("Arrêt demandé par l’utilisateur.")
+            self.perform_stop()
 
-            if self.active_backend == "yt-dlp":
-                try:
-                    if sys.platform == "win32" and hasattr(signal, "CTRL_BREAK_EVENT"):
-                        self.process.send_signal(signal.CTRL_BREAK_EVENT)
-                    else:
-                        self.process.send_signal(signal.SIGINT)
-                except Exception:
-                    self.process.terminate()
+    def perform_stop(self):
+        if not self.process:
+            return
+
+        self.user_stopped = True
+        proc = self.process
+        ts_file = self.current_ts_file
+
+        threading.Thread(
+            target=self._stop_worker,
+            args=(proc, ts_file),
+            daemon=True
+        ).start()
+
+    def _stop_worker(self, proc, ts_file):
+        try:
+            self.escalate_process_stop(proc)
+
+            if ts_file and os.path.exists(ts_file):
+                self.log_text("Vérification de la fermeture du fichier TS...")
+                if self.wait_file_closed(ts_file):
+                    self.log_text("[INFO] Fichier TS fermé correctement.")
+                else:
+                    self.log_text("[INFO] Impossible de confirmer la fermeture complète du fichier TS.")
+        except Exception as e:
+            self.log_text(f"Erreur pendant l’arrêt : {e}")
+
+    def escalate_process_stop(self, proc):
+        if proc is None:
+            return
+
+        self.log_text("[INFO] Stop demandé")
+
+        try:
+            if sys.platform == "win32" and hasattr(signal, "CTRL_BREAK_EVENT"):
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
             else:
-                self.process.terminate()
+                proc.send_signal(signal.SIGINT)
+            self.log_text("[INFO] SIGINT envoyé")
+        except Exception as e:
+            self.log_text(f"[INFO] Échec de l’envoi de SIGINT : {e}")
+
+        if self._wait_process_exit(proc, 6):
+            self.log_text("[INFO] Processus terminé")
+            return
+
+        try:
+            proc.terminate()
+            self.log_text("[INFO] SIGTERM envoyé")
+        except Exception as e:
+            self.log_text(f"[INFO] Échec de l’envoi de SIGTERM : {e}")
+
+        if self._wait_process_exit(proc, 6):
+            self.log_text("[INFO] Processus terminé")
+            return
+
+        try:
+            proc.kill()
+            self.log_text("[INFO] SIGKILL envoyé")
+        except Exception as e:
+            self.log_text(f"[INFO] Échec de l’envoi de SIGKILL : {e}")
+
+        self._wait_process_exit(proc, 10)
+        self.log_text("[INFO] Processus terminé")
+
+    def _wait_process_exit(self, proc, timeout):
+        try:
+            proc.wait(timeout=timeout)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+        except Exception:
+            return True
+
+    def wait_file_closed(self, path, stable_checks=3, interval=0.4):
+        try:
+            previous_size = -1
+            stable_count = 0
+            for _ in range(stable_checks * 3):
+                if not os.path.exists(path):
+                    return True
+                size = os.path.getsize(path)
+                if size == previous_size:
+                    stable_count += 1
+                    if stable_count >= stable_checks:
+                        return True
+                else:
+                    stable_count = 0
+                previous_size = size
+                time.sleep(interval)
+            return stable_count >= stable_checks
+        except OSError:
+            return False
 
     def open_current_folder(self, button):
         target = self.final_file or self.current_ts_file or self.current_folder()

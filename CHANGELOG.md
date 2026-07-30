@@ -4,6 +4,33 @@ Toutes les évolutions importantes de KageStream sont répertoriées dans ce fic
 
 Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Les versions historiques 0.1 à 0.5 ne possédaient pas de date connue ; elles sont conservées sans en inventer.
 
+## [0.6.0] - 2026-07-30
+
+### Ajouté
+
+#### Enregistrement et arrêt
+
+- Arrêt robuste en trois paliers (SIGINT puis SIGTERM puis SIGKILL) avec attente de la fermeture réelle du processus avant de continuer.
+- Vérification de la fermeture effective du fichier TS après l’arrêt, par contrôle de la stabilité de sa taille.
+- Reconnexion automatique lorsqu’un flux Streamlink ou FFmpeg direct s’interrompt brutalement : nouvelle tentative toutes les 15 secondes pendant 2 minutes avant d’abandonner et de finaliser l’enregistrement avec les données déjà capturées.
+- Fusion automatique des segments récupérés après une ou plusieurs reconnexions, avant l’analyse et le remux.
+- Programmation d’un enregistrement avec heure de début et heure de fin, pour Streamlink, l’IPTV et FFmpeg direct. L’arrêt à l’heure de fin suit exactement la même procédure robuste que le bouton **Stop**.
+
+#### Remux et vérification
+
+- Boîte de dialogue proposant, à la fin d’un enregistrement, de vérifier le fichier TS (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de remuxer directement.
+- Remux organisé en paliers de repli successifs : vidéo + audio + sous-titres, puis vidéo + audio seuls si le télétexte ou les sous-titres DVB du multiplex sont incompatibles avec le conteneur, puis un mapping minimal en dernier recours. Le remux tente désormais toujours de produire un fichier plutôt que d’abandonner silencieusement.
+- Filtre `aac_adtstoasc` appliqué pendant le remux pour corriger les flux audio AAC de diffusion DVB dépourvus d’un en-tête ADTS exploitable par le conteneur de sortie.
+
+#### Interface
+
+- Affichage de l’heure locale et de l’heure de Tokyo dans la fenêtre principale, actualisées chaque seconde via `zoneinfo`.
+
+### Modifié
+
+- Le bouton **Stop** et l’arrêt automatique programmé partagent désormais la même procédure d’arrêt robuste et la même vérification de fermeture du fichier.
+- Le remux ne s’arrête plus après un seul échec sans avoir produit de fichier : il retente automatiquement avec un mapping réduit avant d’abandonner et de proposer le repli MKV ou de conserver le TS.
+
 ## [0.5.1] - 2024-07-16
 
 ### Ajouté

@@ -16,7 +16,12 @@ KageStream possède actuellement les fondations suivantes :
 - lecture des listes locales M3U, M3U8 et XSPF ;
 - sorties TS, MKV et MP4 ;
 - diagnostic et analyse de la santé des enregistrements ;
-- installation directe et vérifiée de yt-dlp, Deno, Streamlink, FFmpeg et FFprobe.
+- installation directe et vérifiée de yt-dlp, Deno, Streamlink, FFmpeg et FFprobe ;
+- arrêt robuste des enregistrements (SIGINT puis SIGTERM puis SIGKILL) avec vérification de la fermeture du fichier TS ;
+- reconnexion automatique des flux Streamlink et FFmpeg direct après une coupure momentanée (jusqu’à 2 minutes avant abandon) ;
+- programmation d’un enregistrement avec heure de début et de fin pour Streamlink, l’IPTV et FFmpeg direct ;
+- vérification optionnelle du fichier TS avant remux, avec repli automatique de mapping en cas d’échec ;
+- horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale.
 
 ## Principes du projet
 
@@ -58,7 +63,7 @@ Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter d
 - [ ] **Priorité haute** — Tester les URL expirées, les coupures réseau et les flux sans audio ou sans vidéo.
 - [ ] **Priorité haute** — Vérifier les collisions de noms avant chaque téléchargement.
 - [ ] **Priorité haute** — Améliorer la reprise et l’identification des fichiers `.part`.
-- [ ] **Priorité moyenne** — Ajouter une limite configurable au nombre de tentatives de reconnexion.
+- [ ] **Priorité moyenne** — Ajouter une limite configurable au nombre de tentatives de reconnexion. *(Base ajoutée le 2026-07-30 pour Streamlink/FFmpeg direct : fenêtre fixe de 2 minutes, tentative toutes les 15 secondes. Reste à rendre ces valeurs configurables.)*
 - [ ] **Priorité moyenne** — Produire un rapport de diagnostic exportable dans un fichier texte.
 
 ### Tests
@@ -90,8 +95,8 @@ Objectif : dépasser le fonctionnement limité à un seul lien préparé manuell
 
 ### Programmation
 
-- [ ] **Priorité haute** — Programmer une heure de démarrage.
-- [ ] **Priorité haute** — Définir une durée maximale d’enregistrement.
+- [x] **Priorité haute** — Programmer une heure de démarrage. *(Fait le 2026-07-30, voir CHANGELOG 0.6.0 — Streamlink, IPTV et FFmpeg direct uniquement, pas YouTube.)*
+- [x] **Priorité haute** — Définir une durée maximale d’enregistrement. *(Fait le 2026-07-30 sous forme d’une heure de fin plutôt que d’une durée en minutes ; l’arrêt réutilise la procédure robuste du bouton Stop.)*
 - [ ] **Priorité moyenne** — Répéter une programmation certains jours.
 - [ ] **Priorité moyenne** — Prévenir lorsque la source n’est pas disponible à l’heure prévue.
 - [ ] **Priorité basse** — Autoriser plusieurs enregistrements simultanés avec une limite configurable.
@@ -132,8 +137,8 @@ Objectif : proposer un niveau de choix proche d’un gestionnaire de télécharg
 ### Lives
 
 - [ ] **Priorité haute** — Afficher clairement les états à venir, en direct et terminé.
-- [ ] **Priorité haute** — Améliorer la reconnexion après une coupure momentanée.
-- [ ] **Priorité moyenne** — Permettre l’arrêt automatique à une heure ou après une durée donnée.
+- [ ] **Priorité haute** — Améliorer la reconnexion après une coupure momentanée. *(Fait le 2026-07-30 pour Streamlink et FFmpeg direct, voir CHANGELOG 0.6.0. Reste à faire spécifiquement pour les lives YouTube/yt-dlp.)*
+- [ ] **Priorité moyenne** — Permettre l’arrêt automatique à une heure ou après une durée donnée. *(Fait le 2026-07-30 pour Streamlink, l’IPTV et FFmpeg direct. Reste à faire pour YouTube.)*
 - [ ] **Priorité basse** — Découper automatiquement les très longs lives en plusieurs fichiers.
 
 ### Critères de validation
@@ -231,6 +236,6 @@ KageStream n’a pas vocation à :
 5. Mémoriser les réglages essentiels.
 6. Ajouter une véritable file d’attente.
 7. Autoriser la sélection multiple dans les listes locales.
-8. Ajouter la programmation et la durée maximale.
+8. ~~Ajouter la programmation et la durée maximale.~~ **Fait le 2026-07-30** pour Streamlink/IPTV/FFmpeg direct (voir CHANGELOG 0.6.0).
 9. Développer le sélecteur avancé de formats YouTube.
 10. Automatiser la construction et la vérification des AppImages.
