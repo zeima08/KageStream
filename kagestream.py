@@ -1618,9 +1618,11 @@ class KageStream(Gtk.Window):
             flags=0
         )
         dialog.add_button("Fermer", Gtk.ResponseType.CANCEL)
-        dialog.add_button("Enregistrer la sélection", Gtk.ResponseType.OK)
-        dialog.set_default_size(1000, 620)
+        dialog.add_button("Programmer", Gtk.ResponseType.APPLY)
+        dialog.add_button("Enregistrer maintenant", Gtk.ResponseType.OK)
+        dialog.set_default_size(1000, 660)
         dialog.set_response_sensitive(Gtk.ResponseType.OK, False)
+        dialog.set_response_sensitive(Gtk.ResponseType.APPLY, False)
 
         content = dialog.get_content_area()
         content.set_margin_top(14)
@@ -1660,12 +1662,22 @@ class KageStream(Gtk.Window):
 
         refresh_button = Gtk.Button(label="Actualiser")
 
+        schedule_start_entry = Gtk.Entry()
+        schedule_start_entry.set_placeholder_text("HH:MM ou HH:MM:SS — pour Programmer")
+
+        schedule_end_entry = Gtk.Entry()
+        schedule_end_entry.set_placeholder_text("HH:MM ou HH:MM:SS — pour Programmer")
+
         controls.attach(Gtk.Label(label="Liste", xalign=0), 0, 0, 1, 1)
         controls.attach(playlist_selector, 1, 0, 1, 1)
         controls.attach(Gtk.Label(label="Format", xalign=0), 2, 0, 1, 1)
         controls.attach(format_selector, 3, 0, 1, 1)
         controls.attach(refresh_button, 4, 0, 1, 1)
         controls.attach(search_entry, 0, 1, 5, 1)
+        controls.attach(Gtk.Label(label="Début programmé", xalign=0), 0, 2, 1, 1)
+        controls.attach(schedule_start_entry, 1, 2, 1, 1)
+        controls.attach(Gtk.Label(label="Fin programmée", xalign=0), 2, 2, 1, 1)
+        controls.attach(schedule_end_entry, 3, 2, 1, 1)
 
         count_label = Gtk.Label(xalign=0)
         content.pack_start(count_label, False, False, 0)
@@ -1724,10 +1736,9 @@ class KageStream(Gtk.Window):
 
         def selection_changed(*_args):
             _model, tree_iter = selection.get_selected()
-            dialog.set_response_sensitive(
-                Gtk.ResponseType.OK,
-                tree_iter is not None and not bool(self.process)
-            )
+            has_selection = tree_iter is not None and not bool(self.process)
+            dialog.set_response_sensitive(Gtk.ResponseType.OK, has_selection)
+            dialog.set_response_sensitive(Gtk.ResponseType.APPLY, has_selection)
 
         def refresh_dialog(*_args):
             nonlocal files, playlist_data
@@ -1755,8 +1766,10 @@ class KageStream(Gtk.Window):
 
         selected_item = None
         selected_format = format_selector.get_active_id() or "ts"
+        schedule_start_text = schedule_start_entry.get_text().strip()
+        schedule_end_text = schedule_end_entry.get_text().strip()
 
-        if response == Gtk.ResponseType.OK:
+        if response in (Gtk.ResponseType.OK, Gtk.ResponseType.APPLY):
             selected_model, tree_iter = selection.get_selected()
             if tree_iter is not None:
                 selected_item = {
@@ -1777,12 +1790,26 @@ class KageStream(Gtk.Window):
             )
             return
 
+        if response == Gtk.ResponseType.APPLY and self.schedule_active:
+            self.show_message(
+                "Programmation déjà active",
+                "Une programmation est déjà en attente. Annule-la avant d’en définir une nouvelle.",
+                Gtk.MessageType.WARNING
+            )
+            return
+
         self.notebook.set_current_page(0)
         self.url_entry.set_text(selected_item["url"])
         self.filename.set_text(sanitize_filename(selected_item["title"]))
         self.stream_profile.set_active_id("copy")
         self.output_format.set_active_id(selected_format)
-        self.start_recording(None)
+
+        if response == Gtk.ResponseType.APPLY:
+            self.schedule_start_entry.set_text(schedule_start_text)
+            self.schedule_end_entry.set_text(schedule_end_text)
+            self.schedule_button_clicked(self.schedule_button)
+        else:
+            self.start_recording(None)
 
     def is_youtube_url(self, url):
         try:
@@ -2938,6 +2965,7 @@ class KageStream(Gtk.Window):
             ts_file = self.merge_segments(segment_files)
             self.current_ts_file = ts_file
             has_data = bool(ts_file) and os.path.exists(ts_file) and os.path.getsize(ts_file) > 0
+            self.set_status("Enregistrement arrêté — finalisation...")
 
             if self.user_stopped:
                 self.log_text("Enregistrement arrêté par l’utilisateur.")
@@ -2982,14 +3010,17 @@ class KageStream(Gtk.Window):
             self.set_status("Prêt.")
 
     def finalize_capture(self, ts_file, fmt, profile="copy"):
-        self.check_recording_health(ts_file)
-
         if profile != "copy":
+            self.check_recording_health(ts_file)
             self.transcode_capture(ts_file, fmt, profile)
         elif fmt == "ts":
+            self.check_recording_health(ts_file)
             self.final_file = ts_file
             self.log_text(f"Fichier final : {ts_file}")
         else:
+            # Pas d'analyse complète automatique ici : elle décoderait tout le TS
+            # et retarderait d'autant l'apparition du choix vérifier/remuxer.
+            # L'analyse ne tourne que si l'utilisateur choisit « Vérifier le TS ».
             GLib.idle_add(self.ask_verify_before_remux, ts_file, fmt)
 
     def ffmpeg_encoder_available(self, encoder):
@@ -3463,7 +3494,7 @@ class KageStream(Gtk.Window):
         except Exception as e:
             self.log_text(f"[INFO] Échec de l’envoi de SIGINT : {e}")
 
-        if self._wait_process_exit(proc, 6):
+        if self._wait_process_exit(proc, 3):
             self.log_text("[INFO] Processus terminé")
             return
 
@@ -3473,7 +3504,7 @@ class KageStream(Gtk.Window):
         except Exception as e:
             self.log_text(f"[INFO] Échec de l’envoi de SIGTERM : {e}")
 
-        if self._wait_process_exit(proc, 6):
+        if self._wait_process_exit(proc, 3):
             self.log_text("[INFO] Processus terminé")
             return
 
@@ -3483,7 +3514,7 @@ class KageStream(Gtk.Window):
         except Exception as e:
             self.log_text(f"[INFO] Échec de l’envoi de SIGKILL : {e}")
 
-        self._wait_process_exit(proc, 10)
+        self._wait_process_exit(proc, 5)
         self.log_text("[INFO] Processus terminé")
 
     def _wait_process_exit(self, proc, timeout):
@@ -3495,25 +3526,12 @@ class KageStream(Gtk.Window):
         except Exception:
             return True
 
-    def wait_file_closed(self, path, stable_checks=3, interval=0.4):
-        try:
-            previous_size = -1
-            stable_count = 0
-            for _ in range(stable_checks * 3):
-                if not os.path.exists(path):
-                    return True
-                size = os.path.getsize(path)
-                if size == previous_size:
-                    stable_count += 1
-                    if stable_count >= stable_checks:
-                        return True
-                else:
-                    stable_count = 0
-                previous_size = size
-                time.sleep(interval)
-            return stable_count >= stable_checks
-        except OSError:
-            return False
+    def wait_file_closed(self, path):
+        # proc.wait() (appelé juste avant dans escalate_process_stop) garantit déjà
+        # que le processus est terminé, donc que ses descripteurs de fichiers sont
+        # fermés au niveau noyau : inutile d'ajouter une attente ici, qui ne ferait
+        # que ralentir chaque arrêt sans rien vérifier de plus.
+        return not path or os.path.exists(path)
 
     def open_current_folder(self, button):
         target = self.final_file or self.current_ts_file or self.current_folder()

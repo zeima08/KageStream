@@ -19,7 +19,7 @@ KageStream possède actuellement les fondations suivantes :
 - installation directe et vérifiée de yt-dlp, Deno, Streamlink, FFmpeg et FFprobe ;
 - arrêt robuste des enregistrements (SIGINT puis SIGTERM puis SIGKILL) avec vérification de la fermeture du fichier TS ;
 - reconnexion automatique des flux Streamlink et FFmpeg direct après une coupure momentanée (jusqu’à 2 minutes avant abandon) ;
-- programmation d’un enregistrement avec heure de début et de fin pour Streamlink, l’IPTV et FFmpeg direct ;
+- programmation d’un enregistrement avec heure de début et de fin pour Streamlink, l’IPTV et FFmpeg direct, y compris directement depuis la fenêtre des listes locales lors du choix d’une chaîne ;
 - vérification optionnelle du fichier TS avant remux, avec repli automatique de mapping en cas d’échec ;
 - horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale.
 

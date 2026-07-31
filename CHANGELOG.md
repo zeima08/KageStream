@@ -4,6 +4,17 @@ Toutes les évolutions importantes de KageStream sont répertoriées dans ce fic
 
 Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Les versions historiques 0.1 à 0.5 ne possédaient pas de date connue ; elles sont conservées sans en inventer.
 
+## [0.6.1] - 2026-07-31
+
+### Ajouté
+
+- Programmation d’un enregistrement directement depuis la fenêtre **Listes locales** : en sélectionnant une chaîne, un nouveau bouton **Programmer** applique l’heure de début/fin saisie sur place, en réutilisant le même mécanisme que le bouton **Programmer** de l’onglet Flux & IPTV. Le bouton **Enregistrer la sélection** est renommé **Enregistrer maintenant** pour plus de clarté à côté de ce nouveau choix.
+
+### Modifié
+
+- Arrêt nettement plus réactif : la vérification de fermeture du fichier TS ajoutait un délai fixe d’au moins 1,2 seconde après chaque arrêt alors que le processus était déjà confirmé terminé ; elle ne fait plus qu’une vérification immédiate. Les paliers d’escalade SIGINT/SIGTERM/SIGKILL sont aussi raccourcis (3 s + 3 s + 5 s au lieu de 6 s + 6 s + 10 s), sans rien perdre de la garantie d’arrêt forcé.
+- Après un Stop destiné à un remux MKV/MP4, l’analyse complète du fichier ne se lance plus automatiquement avant même l’affichage du choix « Vérifier le TS / Remuxer directement » : elle ne tourne désormais que si l’utilisateur choisit explicitement de vérifier. Le statut affiche aussi immédiatement « finalisation en cours » dès l’arrêt du processus, pour éviter l’impression que l’application ne répond plus.
+
 ## [0.6.0] - 2026-07-30
 
 ### Ajouté
