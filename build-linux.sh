@@ -8,6 +8,7 @@ ICON_SRC="$ROOT_DIR/assets/icons/kagestream.png"
 APPIMAGETOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
 VENV_DIR="$ROOT_DIR/.venv"
 SOURCE_FILE="$ROOT_DIR/kagestream.py"
+APP_PACKAGE_FILE="$ROOT_DIR/kagestream/app.py"
 SPEC_FILE="$ROOT_DIR/kagestream.spec"
 OUTPUT_APPIMAGE="$ROOT_DIR/KageStream-x86_64.AppImage"
 
@@ -24,9 +25,20 @@ if [ ! -f "$SPEC_FILE" ]; then
     exit 1
 fi
 
-if ! grep -qF 'self.notebook = Gtk.Notebook()' "$SOURCE_FILE"; then
-    echo "Erreur : $SOURCE_FILE ne contient pas la nouvelle interface à onglets."
-    echo "Le build est arrêté pour éviter de recréer accidentellement l’ancienne interface."
+if [ ! -f "$APP_PACKAGE_FILE" ]; then
+    echo "Erreur : $APP_PACKAGE_FILE introuvable."
+    echo "kagestream.py doit rester un lanceur minimal qui importe le package kagestream/."
+    exit 1
+fi
+
+if ! grep -qF 'from kagestream.main import main' "$SOURCE_FILE"; then
+    echo "Erreur : $SOURCE_FILE ne lance plus l’application via le package kagestream/."
+    exit 1
+fi
+
+if ! grep -qF 'self.stack = Gtk.Stack()' "$APP_PACKAGE_FILE"; then
+    echo "Erreur : $APP_PACKAGE_FILE ne contient pas la nouvelle interface à barre latérale."
+    echo "Le build est arrêté pour éviter de recréer accidentellement l’ancienne interface à onglets."
     exit 1
 fi
 

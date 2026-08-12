@@ -1,12 +1,15 @@
 # KageStream
 
-KageStream est une interface GTK 3 conçue par Zeima pour télécharger des vidéos, enregistrer des lives et sauvegarder des flux réseau sans devoir composer manuellement les commandes Streamlink, yt-dlp ou FFmpeg.
+KageStream est une interface GTK 3 conçue par Zeima pour télécharger des vidéos, enregistrer des lives, sauvegarder des flux réseau et télécharger de la musique sans devoir composer manuellement les commandes Streamlink, yt-dlp ou FFmpeg.
 
-L’application accepte les liens YouTube, les sites reconnus par Streamlink, les sources MPEG-TS/HLS directement lisibles par FFmpeg ainsi que les liens provenant de listes locales M3U, M3U8 et XSPF.
+L’application accepte les liens YouTube, les sites reconnus par Streamlink, les sources MPEG-TS/HLS directement lisibles par FFmpeg, les liens provenant de listes locales M3U, M3U8 et XSPF, ainsi que les liens YouTube Music, SoundCloud et Bandcamp.
+
+L’interface est organisée autour d’une barre latérale (**Capturer**, **Musique**, **YouTube**, **Téléchargements**, **Outils**) qui regroupe les fonctions par usage plutôt que par onglets.
 
 ## Fonctionnalités principales
 
 - Détection automatique du moteur approprié : yt-dlp, Streamlink ou FFmpeg.
+- Téléchargement de musique depuis YouTube Music, SoundCloud et Bandcamp, avec sélection des pistes, profils de format (Compatible, Qualité maximale, Archivage, Personnalisé) et file de téléchargement dédiée.
 - Téléchargement YouTube dans la meilleure qualité vidéo et audio disponibles.
 - Limite de résolution configurable jusqu’à 8K.
 - Enregistrement des lives YouTube à partir de maintenant ou, de façon expérimentale, depuis leur début.
@@ -120,6 +123,18 @@ Le bouton **Stop** envoie un `SIGINT`, attend quelques secondes, puis escalade e
 
 La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo, en plusieurs paliers de repli : vidéo + audio + sous-titres, puis vidéo + audio seuls si le télétexte ou les sous-titres DVB du multiplex sont incompatibles avec le conteneur, puis un mapping minimal en dernier recours. Le remux corrige aussi automatiquement les flux audio AAC de diffusion DVB dépourvus d’un en-tête ADTS exploitable. Si MP4 refuse certains codecs malgré ces replis, KageStream propose un passage vers MKV et conserve toujours le TS original en cas d’échec.
 
+## Télécharger de la musique
+
+Dans la barre latérale, ouvre **Musique**.
+
+1. Colle un lien YouTube Music, SoundCloud ou Bandcamp (morceau, album ou playlist).
+2. Clique sur **Analyser**. KageStream détecte automatiquement le fournisseur à partir de l’URL puis délègue l’analyse à yt-dlp — aucune API officielle n’est nécessaire.
+3. Vérifie le titre, l’artiste, la pochette et la liste des pistes. Décoche celles que tu ne veux pas télécharger, ou utilise **Tout cocher** / **Tout décocher**.
+4. Choisis un profil : **Compatible** (MP3 192 kbps), **Qualité maximale**, **Archivage** (FLAC), ou **Personnalisé** pour choisir toi-même le format parmi MP3, AAC, M4A, Opus, Vorbis, FLAC ou l’original sans conversion.
+5. Choisis le dossier de destination puis clique sur **Télécharger la sélection**.
+
+Chaque piste est enregistrée sous `Artiste/Album/` dans le dossier choisi, avec des noms de fichiers nettoyés. La progression est visible dans l’onglet **Téléchargements**, qui liste les tâches en cours, en attente et terminées, permet d’annuler une tâche active et d’ouvrir directement le dossier une fois le téléchargement terminé.
+
 ## Programmer un enregistrement
 
 Dans l’onglet **Flux & IPTV**, la section **Programmation d’un enregistrement** permet de définir :
@@ -198,7 +213,8 @@ Ouvre **Mises à jour** et utilise le bouton global d’installation. Le chemin 
 - L’AppImage Streamlink nécessite une distribution Linux basée sur glibc.
 - Une interruption brutale du système peut laisser un fichier `.part` ou un TS incomplet, même si KageStream essaie de finaliser proprement les arrêts demandés depuis l’interface.
 - La reconnexion automatique et la programmation d’un enregistrement fonctionnent avec Streamlink, l’IPTV et FFmpeg direct, mais pas encore avec YouTube.
-
+- La file de téléchargement musical traite une piste à la fois et ne survit pas à un redémarrage de KageStream ; l’organisation des fichiers est fixée à `Artiste/Album` sans option de personnalisation pour l’instant.
+- Sur des distributions basée sur Arch,il est possible que les dépendances ne veulent pas se télécharger automatiquement,merci de récupérés les dépendances via le ``` sudo pacman -S``` suivi de la dépendance manquante.
 ## Historique
 
 Consulte [CHANGELOG.md](CHANGELOG.md) pour le détail des évolutions.

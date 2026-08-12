@@ -21,7 +21,10 @@ KageStream possède actuellement les fondations suivantes :
 - reconnexion automatique des flux Streamlink et FFmpeg direct après une coupure momentanée (jusqu’à 2 minutes avant abandon) ;
 - programmation d’un enregistrement avec heure de début et de fin pour Streamlink, l’IPTV et FFmpeg direct, y compris directement depuis la fenêtre des listes locales lors du choix d’une chaîne ;
 - vérification optionnelle du fichier TS avant remux, avec repli automatique de mapping en cas d’échec ;
-- horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale.
+- horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale ;
+- téléchargement de musique depuis YouTube Music, SoundCloud et Bandcamp (détection du fournisseur, sélection des pistes, profils de format, file de téléchargement dédiée) ;
+- interface réorganisée autour d’une barre latérale (Capturer, Musique, YouTube, Téléchargements, Outils) à la place de l’ancienne interface à onglets ;
+- premier découpage du script principal en package `kagestream/` : dépendances, analyse yt-dlp, arrêt robuste des processus, listes M3U/XSPF et utilitaires de chemins/noms de fichiers sont désormais des modules partagés.
 
 ## Principes du projet
 
@@ -45,8 +48,8 @@ Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter d
 
 ### Architecture
 
-- [ ] **Priorité haute** — Découper le script principal en modules : interface, détection des sources, YouTube, enregistrement, listes et dépendances.
-- [ ] **Priorité haute** — Centraliser le lancement et l’arrêt des sous-processus.
+- [ ] **Priorité haute** — Découper le script principal en modules : interface, détection des sources, YouTube, enregistrement, listes et dépendances. *(Partiellement fait le 2026-08-12 : dépendances, analyse yt-dlp, arrêt des processus, listes M3U/XSPF et utilitaires sont extraits dans le package `kagestream/`. L’interface historique — capture, YouTube, Dépendances/Diagnostic/Logs — reste construite dans un seul `kagestream/app.py` encore volumineux et reste à découper.)*
+- [ ] **Priorité haute** — Centraliser le lancement et l’arrêt des sous-processus. *(Arrêt fait le 2026-08-12 : `kagestream/media/process.py` fournit l’escalade SIGINT/SIGTERM/SIGKILL désormais partagée par la capture et le téléchargement musical. Le lancement des processus — Streamlink, FFmpeg, yt-dlp — reste construit séparément à chaque emplacement.)*
 - [ ] **Priorité haute** — Ajouter une gestion structurée des erreurs avec messages courts dans l’interface et détails dans les journaux.
 - [ ] **Priorité moyenne** — Introduire une constante de version utilisée par l’application, le diagnostic et les paquets.
 - [ ] **Priorité moyenne** — Définir des dossiers XDG séparés pour les données, la configuration, le cache et les journaux.
@@ -79,6 +82,16 @@ Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter d
 - Un arrêt demandé conserve ou finalise le fichier lorsque le moteur le permet.
 - Les réglages essentiels sont restaurés au redémarrage.
 - Les parseurs et constructeurs de commandes sont couverts par des tests automatisés.
+
+## Musique — évolutions envisagées après le socle initial
+
+Objectif : consolider le téléchargement musical (YouTube Music, SoundCloud, Bandcamp) ajouté le 2026-08-12, voir CHANGELOG 0.7.0.
+
+- [ ] **Priorité moyenne** — Permettre de personnaliser l’organisation des fichiers téléchargés, actuellement fixée à `Artiste/Album`.
+- [ ] **Priorité moyenne** — Traiter plusieurs téléchargements musicaux en parallèle plutôt qu’un seul à la fois.
+- [ ] **Priorité moyenne** — Faire persister la file de téléchargement musical entre deux lancements de KageStream, comme prévu pour la file de capture en version 0.7.
+- [ ] **Priorité basse** — Ajouter une vue playlist filtrable avant l’ajout à la file, comme envisagé pour les playlists YouTube classiques.
+- [ ] **Priorité basse** — Utiliser les API officielles YouTube Music ou SoundCloud pour enrichir les métadonnées lorsque l’analyse yt-dlp seule ne suffit pas.
 
 ## Version 0.7 — File d’attente et programmation
 
@@ -230,7 +243,7 @@ KageStream n’a pas vocation à :
 ## Prochain ordre de travail conseillé
 
 1. Ajouter une version interne et des dossiers de configuration XDG.
-2. Extraire les installateurs de dépendances dans un module testable.
+2. ~~Extraire les installateurs de dépendances dans un module testable.~~ **Fait le 2026-08-12** (`kagestream/deps/installer.py` et `kagestream/deps/discovery.py`), voir CHANGELOG 0.7.0. Reste à leur ajouter des tests automatisés.
 3. Extraire la génération des commandes yt-dlp, Streamlink et FFmpeg.
 4. Ajouter les tests des listes M3U/XSPF et des commandes.
 5. Mémoriser les réglages essentiels.

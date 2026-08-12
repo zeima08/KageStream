@@ -4,6 +4,27 @@ Toutes les évolutions importantes de KageStream sont répertoriées dans ce fic
 
 Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/). Les versions historiques 0.1 à 0.5 ne possédaient pas de date connue ; elles sont conservées sans en inventer.
 
+## [0.7.0] - 2026-08-12
+
+### Ajouté
+
+#### Téléchargement de musique
+
+- Nouvelle page **Musique** permettant de coller un lien **YouTube Music**, **SoundCloud** ou **Bandcamp** : le fournisseur est détecté automatiquement à partir du nom d’hôte, puis l’analyse (morceau, album ou playlist) est déléguée à yt-dlp, sans dépendre d’une API officielle.
+- Après analyse, affichage du titre, de l’artiste, de l’année, de la pochette et de la liste complète des pistes, avec sélection individuelle et boutons **Tout cocher** / **Tout décocher**.
+- Trois profils de téléchargement prêts à l’emploi — **Compatible** (MP3 192 kbps), **Qualité maximale** et **Archivage** (FLAC) — ainsi qu’un profil **Personnalisé** avec choix du format parmi Original, MP3, AAC, M4A, Opus, Vorbis et FLAC.
+- Organisation automatique des fichiers téléchargés sous `Artiste/Album`, avec nettoyage des noms de fichiers et protection contre les chemins traversants (path traversal).
+- Nouvelle page **Téléchargements** listant les tâches musicales en cours, en attente et terminées, avec barre de progression par piste, annulation et ouverture directe du dossier final.
+
+#### Interface
+
+- Nouvelle barre latérale de navigation (**Capturer**, **Musique**, **YouTube**, **Téléchargements**, **Outils → Dépendances/Diagnostic/Logs**) qui remplace l’ancienne interface à onglets, pour une organisation plus lisible des fonctions déjà présentes et des nouvelles.
+
+### Modifié
+
+- `kagestream.py` devient un lanceur minimal qui importe le nouveau package `kagestream/` ; la gestion des dépendances, l’analyse yt-dlp, l’arrêt robuste des processus, la lecture des listes M3U/XSPF et les utilitaires de chemins/noms de fichiers sont désormais des modules partagés entre la capture existante et le nouveau téléchargement musical, au lieu de vivre uniquement dans l’ancien script unique.
+- `build-linux.sh` vérifie désormais la présence du package `kagestream/` et de la nouvelle interface à barre latérale avant de construire l’AppImage, à la place de l’ancienne vérification liée aux onglets.
+
 ## [0.6.1] - 2026-07-31
 
 ### Ajouté
