@@ -112,7 +112,8 @@ Objectif : dépasser le fonctionnement limité à un seul lien préparé manuell
 - [x] **Priorité haute** — Définir une durée maximale d’enregistrement. *(Fait le 2026-07-30 sous forme d’une heure de fin plutôt que d’une durée en minutes ; l’arrêt réutilise la procédure robuste du bouton Stop.)*
 - [ ] **Priorité moyenne** — Répéter une programmation certains jours.
 - [ ] **Priorité moyenne** — Prévenir lorsque la source n’est pas disponible à l’heure prévue.
-- [ ] **Priorité basse** — Autoriser plusieurs enregistrements simultanés avec une limite configurable.
+- [x] **Priorité basse** — Autoriser plusieurs enregistrements simultanés avec une limite configurable. *(Fait le 2026-09-16 pour Streamlink/IPTV/FFmpeg direct : chaque capture tourne dans son propre thread dès son lancement, suivie dans le nouvel onglet Captures. Pas de limite configurable pour l'instant — seule la finalisation (vérification/remux/conversion) est volontairement limitée à une capture à la fois pour ne pas saturer le CPU. Pas encore fait pour YouTube/Dailymotion, qui reste mono-tâche.)*
+- [x] **Priorité basse** — Découpe manuelle (bornes début/fin) d'une capture terminée pour n'obtenir qu'un seul fichier avant partage. *(Fait le 2026-09-16 — copie de flux sans réencodage, fichier séparé du TS/remux d'origine. Volontairement limité à une seule plage : KageStream reste un outil de capture, pas un éditeur vidéo complet.)*
 
 ### Critères de validation
 

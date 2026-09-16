@@ -4,11 +4,13 @@ KageStream est une interface GTK 3 conçue par Zeima pour télécharger des vid�
 
 L’application accepte les liens YouTube, les sites reconnus par Streamlink, les sources MPEG-TS/HLS directement lisibles par FFmpeg, les liens provenant de listes locales M3U, M3U8 et XSPF, ainsi que les liens YouTube Music, SoundCloud et Bandcamp.
 
-L’interface est organisée autour d’une barre latérale (**Capturer**, **Musique**, **YouTube**, **Téléchargements**, **Outils**) qui regroupe les fonctions par usage plutôt que par onglets.
+L’interface est organisée autour d’une barre latérale (**Capturer**, **Captures**, **Musique**, **YouTube**, **Téléchargements**, **Outils**) qui regroupe les fonctions par usage plutôt que par onglets.
 
 ## Fonctionnalités principales
 
 - Détection automatique du moteur approprié : yt-dlp, Streamlink ou FFmpeg.
+- Captures multiples en parallèle : chaque clic sur **Enregistrer** ou **Programmer** ajoute une nouvelle capture sans arrêter les autres — pratique pour plusieurs chaînes TV en même temps. Toutes sont suivies dans l’onglet **Captures**, avec arrêt individuel. La finalisation (vérification, remux, conversion) reste séquentielle pour ne pas saturer le CPU si plusieurs captures se terminent en même temps.
+- Découpe rapide d’un enregistrement terminé (bornes début/fin, copie de flux sans réencodage) pour obtenir un seul fichier propre à partager.
 - Téléchargement de musique depuis YouTube Music, SoundCloud et Bandcamp, avec sélection des pistes, profils de format (Compatible, Qualité maximale, Archivage, Personnalisé) et file de téléchargement dédiée.
 - Téléchargement YouTube dans la meilleure qualité vidéo et audio disponibles.
 - Limite de résolution configurable jusqu’à 8K.
@@ -71,6 +73,9 @@ GTK et PyGObject doivent être fournis par l’AppImage ou le système. KageStre
 | FFmpeg                        | Capture directe, assemblage audio/vidéo et remux | Oui sous Linux x86_64/ARM64 |
 | FFprobe                       | Analyse des sources et diagnostic                | Oui avec FFmpeg             |
 | Streamlink                    | Extraction des flux des sites compatibles        | Oui sous Linux x86_64/ARM64 |
+| aria2c (optionnel)            | Accélère les téléchargements yt-dlp (multi-connexions) | Non — via le gestionnaire de paquets du système |
+
+aria2c n’a pas de binaire autonome officiel pour Linux : installe-le via le gestionnaire de paquets de ta distribution, par exemple `sudo pacman -S aria2` sous Arch, `sudo apt install aria2` sous Debian/Ubuntu ou `sudo dnf install aria2` sous Fedora. KageStream le détecte automatiquement dans le `PATH` une fois installé et l’utilise pour accélérer les téléchargements yt-dlp.
 
 Pour installer ce qui manque :
 
@@ -117,11 +122,23 @@ KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien,
 
 Si le flux s’interrompt brutalement en cours d’enregistrement (coupure réseau, source IPTV momentanément indisponible), KageStream retente automatiquement de retrouver la source toutes les 15 secondes pendant 2 minutes avant d’abandonner. Si la source revient, l’enregistrement reprend et les segments récupérés sont fusionnés dans le fichier final ; sinon, l’enregistrement s’arrête et conserve les données déjà capturées.
 
-Le bouton **Stop** envoie un `SIGINT`, attend quelques secondes, puis escalade en `SIGTERM` et enfin `SIGKILL` si le processus ne se termine pas de lui-même. KageStream vérifie ensuite que le fichier TS est bien fermé avant de continuer.
+Chaque clic sur **Enregistrer le flux** démarre une nouvelle capture sans toucher aux autres : plusieurs chaînes peuvent être capturées en même temps, chacune avec son propre statut, sa propre santé et son propre bouton d’arrêt, dans l’onglet **Captures**. Le bouton **Stop** de chaque ligne envoie un `SIGINT`, attend quelques secondes, puis escalade en `SIGTERM` et enfin `SIGKILL` si le processus ne se termine pas de lui-même ; KageStream vérifie ensuite que le fichier TS est bien fermé avant de continuer.
 
-À la fin d’un enregistrement destiné à MKV ou MP4, une boîte de dialogue propose de **vérifier le fichier TS** (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de **remuxer directement**.
+À la fin d’un enregistrement destiné à MKV ou MP4, la ligne correspondante dans l’onglet **Captures** propose de **vérifier le fichier TS** (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de **remuxer directement**.
 
 La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo, en plusieurs paliers de repli : vidéo + audio + sous-titres, puis vidéo + audio seuls si le télétexte ou les sous-titres DVB du multiplex sont incompatibles avec le conteneur, puis un mapping minimal en dernier recours. Le remux corrige aussi automatiquement les flux audio AAC de diffusion DVB dépourvus d’un en-tête ADTS exploitable. Si MP4 refuse certains codecs malgré ces replis, KageStream propose un passage vers MKV et conserve toujours le TS original en cas d’échec.
+
+Cette étape de finalisation (vérification, remux, conversion) est gourmande en CPU : elle est traitée **une capture à la fois**, même si plusieurs enregistrements se terminent en même temps. Une capture en attente de finalisation apparaît avec le statut « En attente de remux » le temps que son tour arrive — l’enregistrement des autres captures n’est jamais affecté.
+
+## Couper une vidéo
+
+Une fois une capture **Terminée** (visible dans l’onglet **Captures**), le bouton **Couper cette vidéo…** permet de retirer un générique en début, une pub en fin, ou tout autre passage inutile, pour n’envoyer qu’un seul fichier propre.
+
+1. Clique sur **Couper cette vidéo…**.
+2. Renseigne le **début** et la **fin** à conserver, au format `HH:MM:SS`, `MM:SS` ou en secondes.
+3. Confirme : FFmpeg copie le flux (sans réencodage) entre ces deux bornes dans un nouveau fichier `<nom>_coupe.<extension>`.
+
+Le fichier original n’est jamais modifié ni supprimé — la découpe crée toujours un fichier séparé. KageStream reste un outil de capture, pas un éditeur vidéo complet : seule une plage unique à conserver peut être définie.
 
 ## Télécharger de la musique
 
@@ -142,7 +159,7 @@ Dans l’onglet **Flux & IPTV**, la section **Programmation d’un enregistremen
 - une **heure de début** (format `HH:MM` ou `HH:MM:SS`) ;
 - une **heure de fin** dans le même format.
 
-Colle le lien à enregistrer, renseigne les deux heures puis clique sur **Programmer**. KageStream attend automatiquement l’heure de début, lance l’enregistrement, puis l’arrête à l’heure de fin en suivant exactement la même procédure robuste que le bouton **Stop**. Cliquer à nouveau sur le bouton (devenu **Annuler la programmation**) annule l’attente avant son démarrage.
+Colle le lien à enregistrer, renseigne les deux heures puis clique sur **Programmer**. KageStream attend automatiquement l’heure de début, lance l’enregistrement, puis l’arrête à l’heure de fin en suivant exactement la même procédure robuste que le bouton **Stop**. La programmation apparaît aussitôt dans l’onglet **Captures**, avec un bouton **Annuler la programmation** sur sa ligne — plusieurs programmations (et captures déjà en cours) peuvent coexister sans s’attendre.
 
 La programmation fonctionne avec Streamlink, l’IPTV et FFmpeg direct. Si l’heure de fin est antérieure à l’heure de début, KageStream programme l’arrêt le lendemain.
 
@@ -206,7 +223,9 @@ Ouvre **Mises à jour** et utilise le bouton global d’installation. Le chemin 
 
 ## Limites connues
 
-- Un seul téléchargement ou enregistrement peut être actif à la fois.
+- Plusieurs captures (Streamlink/IPTV/FFmpeg direct) peuvent tourner en même temps, mais un seul téléchargement YouTube/Dailymotion ou un seul téléchargement musical peuvent être actifs à la fois.
+- La finalisation des captures (vérification, remux, conversion) est traitée une à la fois, même si plusieurs enregistrements se terminent au même moment.
+- La découpe d’une vidéo se limite à une seule plage début/fin en copie de flux ; KageStream n’a pas vocation à devenir un éditeur vidéo complet.
 - Le mode live YouTube depuis le début dépend des possibilités offertes par YouTube et yt-dlp.
 - Les contenus protégés par DRM ne sont pas pris en charge.
 - L’installation directe de Streamlink et FFmpeg est actuellement destinée à Linux x86_64 et ARM64.

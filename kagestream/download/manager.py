@@ -143,6 +143,11 @@ class DownloadManager:
             ])
         if window.ffmpeg:
             cmd.extend(["--ffmpeg-location", os.path.dirname(window.ffmpeg)])
+        if window.aria2c:
+            cmd.extend([
+                "--external-downloader", window.aria2c,
+                "--external-downloader-args", "aria2c:-x16 -s16 -k1M",
+            ])
 
         cmd.extend(["--", track.url])
 

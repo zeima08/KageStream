@@ -5,8 +5,9 @@ from gi.repository import Gtk
 # (libellé affiché, nom de la page dans le Gtk.Stack, indentation "sous-item")
 SIDEBAR_ENTRIES = [
     ("Capturer", "capture", False),
+    ("Captures", "captures", False),
     ("Musique", "music", False),
-    ("YouTube", "youtube", False),
+    ("YouTube / Dailymotion", "youtube", False),
     ("Téléchargements", "downloads", False),
     ("Outils", None, False),
     ("Dépendances", "tools_deps", True),
