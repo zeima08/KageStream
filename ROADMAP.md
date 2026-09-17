@@ -174,6 +174,12 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 - [ ] **Priorité moyenne** — Ajouter un fichier `.desktop`, une icône et les catégories de menu appropriées.
 - [ ] **Priorité moyenne** — Tester le fonctionnement avec et sans FUSE grâce au mode extraction-exécution.
 
+### Windows
+
+- [x] **Priorité haute** — Script `build-windows.bat` construisant `KageStream.exe` via PyInstaller (environnement MSYS2 MinGW64, seule source viable de PyGObject/GTK3 sous Windows) puis le lançant directement. *(Fait le 2026-09-17, non vérifié faute de machine Windows disponible — à tester réellement avant de le considérer fiable.)*
+- [ ] **Priorité haute** — Vérifier réellement le build sur une machine Windows et corriger ce qui plante (typelibs GObject-Introspection, DLL GTK, thème d’icônes).
+- [ ] **Priorité moyenne** — Publier une AppImage-like (archive ou installateur) qui ne dépende pas d’un MSYS2 déjà installé sur la machine cible.
+
 ### Publication
 
 - [ ] **Priorité haute** — Automatiser les tests et la construction à chaque version.

@@ -11,6 +11,7 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 - **Captures multiples en parallèle** : la page **Capturer** (Streamlink/IPTV/FFmpeg direct) n’est plus limitée à un seul enregistrement à la fois. Chaque clic sur **Enregistrer** ou **Programmer** ajoute une nouvelle capture dans son propre thread, sans arrêter les autres. Nouvel onglet **Captures** listant toutes les captures en cours, programmées et terminées, avec statut, santé, durée/taille en direct et actions par ligne (Stop, Vérifier le TS / Remuxer, Ouvrir le dossier, Couper). Plusieurs programmations horaires peuvent aussi coexister.
 - **Découpe rapide d’un enregistrement terminé** : bouton « Couper cette vidéo… » sur une capture terminée, avec bornes début/fin (durée totale affichée via FFprobe) et copie de flux sans réencodage vers un nouveau fichier `_coupe`, sans jamais toucher au fichier original.
 - La page YouTube/Dailymotion reste inchangée (un seul téléchargement à la fois).
+- **Script `build-windows.bat`** remplaçant l’ancien script obsolète (qui référençait encore `guistream.py` et l’ancienne interface à onglets) : construit `KageStream.exe` via PyInstaller depuis un environnement MSYS2 MinGW64 (seule source viable de PyGObject/GTK3 sous Windows, aucun paquet officiel n’existant sur PyPI), embarque Streamlink à côté de l’exécutable, puis le lance directement. Non vérifié sur une vraie machine Windows faute d’en avoir une disponible — voir ROADMAP.
 
 ### Modifié
 

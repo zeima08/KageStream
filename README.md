@@ -54,6 +54,19 @@ chmod +x kagestream.py
 python3 kagestream.py
 ```
 
+### Sous Windows
+
+Il n’existe pas de paquet PyGObject officiel sur PyPI : sous Windows, KageStream doit tourner avec le Python fourni par [MSYS2](https://www.msys2.org/) (environnement MinGW64), pas avec le Python de python.org.
+
+1. Installe MSYS2, puis ouvre le terminal **MSYS2 MinGW64** (pas « MSYS2 MSYS »).
+2. `pacman -Syu` (relance le terminal si demandé, puis refais `pacman -Syu`).
+3. `pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3`
+4. Depuis ce même terminal, dans le dossier du projet : `./build-windows.bat`
+
+Le script crée un environnement virtuel (`--system-site-packages` pour hériter de GTK/PyGObject de MSYS2), installe les dépendances Python, construit `dist\KageStream.exe` avec PyInstaller, embarque Streamlink à côté de l’exécutable (aucun installateur direct n’existe pour Streamlink sous Windows, contrairement à Linux), puis **lance directement l’exécutable généré**. FFmpeg, yt-dlp et Deno restent à récupérer depuis l’onglet **Outils** au premier lancement, comme sur les autres plateformes.
+
+Ce chemin de build est plus récent et moins éprouvé que l’AppImage Linux — si la fenêtre ne s’ouvre pas ou plante immédiatement, relance le script depuis le terminal MSYS2 MinGW64 (pour que les bibliothèques GTK soient sur le `PATH`) et vérifie d’abord que `python kagestream.py` fonctionne sans PyInstaller avant de ré-essayer le build.
+
 ## Dépendances
 
 ### Nécessaires au démarrage de l’interface
