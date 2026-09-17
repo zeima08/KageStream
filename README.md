@@ -254,3 +254,14 @@ Consulte [CHANGELOG.md](CHANGELOG.md) pour le détail des évolutions.
 ## Utilisation responsable
 
 Télécharge ou enregistre uniquement les contenus que tu as le droit de conserver. Les conditions d’utilisation des plateformes et les lois applicables restent à respecter.
+
+## Licence
+
+KageStream est distribué sous une licence dérivée de BSD 3 clauses avec conditions supplémentaires — texte complet en [anglais (LICENSE)](LICENSE) et en [français (LICENSE.fr)](LICENSE.fr), ce dernier faisant foi en cas de divergence. En résumé :
+
+- Téléchargement, utilisation, modification et redistribution libres, y compris à des fins commerciales.
+- Tout fork publié doit conserver la licence et mentionner clairement **Zeima** comme auteur d’origine du projet.
+- Il est strictement interdit d’utiliser KageStream, modifié ou non, pour envoyer du spam ou pour toute tentative de piratage, d’intrusion ou de contournement de protections (DRM, authentification, etc.) — une violation entraîne la révocation immédiate de la licence.
+- Le logiciel est fourni sans garantie ; voir le fichier LICENSE pour les clauses complètes de non-garantie et de responsabilité.
+
+Ce n’est pas une licence open source au sens strict de l’OSI (elle restreint certains usages), mais une licence « source disponible ».

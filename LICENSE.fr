@@ -1,0 +1,122 @@
+Licence KageStream (dérivée de BSD 3 clauses, avec conditions supplémentaires)
+==============================================================================
+
+Version française — traduction anglaise disponible dans LICENSE (LICENSE.en).
+En cas de divergence entre les deux versions, le présent texte français fait foi.
+
+Copyright (c) 2025-2026, Zeima
+Tous droits réservés, sous réserve des conditions décrites ci-dessous.
+
+Avertissement : cette licence s'inspire de la licence BSD 3 clauses, à
+laquelle s'ajoutent des restrictions d'usage acceptable (articles 3 et 4).
+De ce fait, elle ne répond PAS à la définition de l'Open Source de l'OSI,
+qui interdit toute restriction de champ d'application. Il s'agit d'une
+licence dite « source disponible » (source-available), pas d'une licence
+open source au sens strict.
+
+1. Définitions
+---------------
+
+« Le Logiciel » désigne le code source, les scripts de build, les
+ressources graphiques et la documentation de KageStream, tels que
+distribués dans ce dépôt ou toute copie de celui-ci.
+
+« Vous » désigne toute personne physique ou morale qui télécharge,
+utilise, copie, modifie, distribue ou publie le Logiciel ou un travail
+dérivé, y compris sous forme de fork.
+
+« Fork » désigne toute copie du Logiciel, modifiée ou non, republiée
+publiquement (dépôt Git, archive, paquet, exécutable, etc.), quel que
+soit son nouveau nom.
+
+2. Octroi de droits
+--------------------
+
+Sous réserve du respect de toutes les conditions de la présente licence,
+une autorisation gratuite Vous est accordée d'utiliser, copier, modifier,
+fusionner, publier et distribuer le Logiciel ou des travaux dérivés
+(y compris des Forks), à des fins personnelles ou commerciales, avec ou
+sans modification.
+
+3. Attribution obligatoire
+----------------------------
+
+Toute redistribution du Logiciel, modifiée ou non, et tout Fork publié
+publiquement, doivent :
+
+  a. conserver le présent texte de licence et l'avis de copyright
+     ci-dessus dans le code source ;
+
+  b. mentionner clairement « Zeima » comme auteur originel du projet
+     KageStream, de façon visible pour toute personne consultant le
+     Fork (par exemple dans le fichier README, une section
+     « Crédits »/« À propos », ou l'écran « À propos » du logiciel) ;
+
+  c. indiquer clairement, si le Fork a été modifié par rapport au
+     projet d'origine, qu'il s'agit d'une version modifiée qui n'est
+     ni maintenue ni approuvée par Zeima.
+
+Cette obligation d'attribution s'applique même si le nom du projet, du
+dépôt ou de la marque est changé dans le Fork.
+
+4. Usages interdits
+---------------------
+
+Il est strictement interdit d'utiliser le Logiciel, en tout ou partie,
+tel quel ou modifié, pour :
+
+  a. envoyer des messages non sollicités en masse (spam), quel que soit
+     le canal concerné (e-mail, messagerie instantanée, réseaux sociaux,
+     commentaires, notifications push, etc.) ;
+
+  b. réaliser ou faciliter des tentatives d'intrusion, de piratage,
+     d'accès non autorisé à des systèmes, comptes ou données, de
+     contournement de mesures de protection technique (DRM,
+     authentification, limitation de débit, restrictions
+     géographiques) ou toute autre activité malveillante ou illégale ;
+
+  c. violer sciemment les conditions d'utilisation des plateformes
+     tierces ou les lois applicables en matière de propriété
+     intellectuelle, de protection des données ou de cybersécurité.
+
+Toute violation du présent article entraîne la révocation immédiate et
+automatique de tous les droits accordés par la présente licence à la
+personne concernée, sans préavis ni mise en demeure préalable.
+
+5. Nom et marque du projet
+-----------------------------
+
+Le nom « KageStream » et le nom « Zeima » ne peuvent pas être utilisés
+pour approuver, promouvoir ou laisser entendre un lien officiel avec des
+travaux dérivés, en dehors de la mention d'attribution requise à
+l'article 3, sans autorisation écrite préalable.
+
+6. Absence de garantie
+-------------------------
+
+LE LOGICIEL EST FOURNI « EN L'ÉTAT », SANS GARANTIE D'AUCUNE SORTE,
+EXPRESSE OU IMPLICITE, Y COMPRIS, MAIS SANS S'Y LIMITER, LES GARANTIES DE
+QUALITÉ MARCHANDE, D'ADÉQUATION À UN USAGE PARTICULIER ET D'ABSENCE DE
+CONTREFAÇON. EN AUCUN CAS L'AUTEUR NE POURRA ÊTRE TENU RESPONSABLE DE
+TOUT DOMMAGE DIRECT, INDIRECT, ACCESSOIRE, SPÉCIAL, EXEMPLAIRE OU
+CONSÉCUTIF (Y COMPRIS, MAIS SANS S'Y LIMITER, LA PERTE DE DONNÉES, DE
+PROFITS OU D'EXPLOITATION) DÉCOULANT DE L'UTILISATION DU LOGICIEL OU EN
+LIEN AVEC CELLE-CI, MÊME SI L'AUTEUR A ÉTÉ INFORMÉ DE LA POSSIBILITÉ DE
+TELS DOMMAGES.
+
+7. Responsabilité de l'utilisateur
+-------------------------------------
+
+Vous êtes seul responsable de l'usage que Vous faites du Logiciel,
+notamment du respect des lois applicables et des conditions
+d'utilisation des services tiers (plateformes de streaming, réseaux
+sociaux, etc.) avec lesquels le Logiciel interagit. Voir également la
+section « Utilisation responsable » du fichier README.md.
+
+8. Résiliation
+------------------
+
+La présente licence prend fin automatiquement et sans préavis si Vous ne
+respectez pas l'une de ses conditions, notamment celles des articles 3
+et 4. En cas de résiliation, Vous devez cesser immédiatement toute
+utilisation, distribution et modification du Logiciel.
