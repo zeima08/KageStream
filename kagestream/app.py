@@ -17,6 +17,8 @@ from gi.repository import Gtk, GLib
 from kagestream.constants import (
     APP_TITLE,
     ICON_PATH,
+    DIRECT_STREAM_USER_AGENT,
+    DIRECT_STREAM_HEADERS,
 )
 from kagestream.utils.paths import app_dir, external_app_dir, user_bin_dir, is_frozen, open_folder
 from kagestream.utils.filenames import sanitize_filename
@@ -637,6 +639,18 @@ class KageStreamWindow(Gtk.Window):
         }.get(preference, "h264")
         return ["--twitch-supported-codecs", codecs]
 
+    def streamlink_header_args(self, url):
+        # Certains fournisseurs IPTV (flux DASH/HLS génériques) filtrent le
+        # user-agent par défaut de Streamlink et répondent 403. On laisse
+        # Twitch inchangé : son propre user-agent est déjà celui qui marche
+        # pour récupérer les jetons d’accès.
+        if self.is_twitch_url(url):
+            return []
+        return [
+            "--http-header", f"User-Agent={DIRECT_STREAM_USER_AGENT}",
+            "--http-header", "Accept=*/*",
+        ]
+
     def on_stream_profile_changed(self, combo):
         profile = combo.get_active_id() or "copy"
         previous = self.output_format.get_active_id()
@@ -738,6 +752,8 @@ class KageStreamWindow(Gtk.Window):
         if not self.ffmpeg:
             return False, "FFmpeg est nécessaire pour enregistrer un flux direct"
 
+        is_http_url = url.lower().startswith(("http://", "https://"))
+
         if self.ffprobe:
             cmd = [
                 self.ffprobe,
@@ -745,12 +761,16 @@ class KageStreamWindow(Gtk.Window):
                 "-rw_timeout", "15000000",
                 "-analyzeduration", "5000000",
                 "-probesize", "5000000",
+            ]
+            if is_http_url:
+                cmd.extend(["-user_agent", DIRECT_STREAM_USER_AGENT, "-headers", DIRECT_STREAM_HEADERS])
+            cmd.extend([
                 "-show_entries",
                 "format=format_name,format_long_name:"
                 "stream=codec_type,codec_name,width,height,channels,sample_rate",
                 "-of", "json",
                 url
-            ]
+            ])
 
             self.log_text("Commande FFprobe :")
             self.log_text(" ".join(cmd))
@@ -808,6 +828,10 @@ class KageStreamWindow(Gtk.Window):
             "-v", "error",
             "-nostdin",
             "-rw_timeout", "15000000",
+        ]
+        if is_http_url:
+            cmd.extend(["-user_agent", DIRECT_STREAM_USER_AGENT, "-headers", DIRECT_STREAM_HEADERS])
+        cmd.extend([
             "-i", url,
             "-t", "0.2",
             "-map", "0:v?",
@@ -815,7 +839,7 @@ class KageStreamWindow(Gtk.Window):
             "-c", "copy",
             "-f", "null",
             "-"
-        ]
+        ])
 
         self.log_text("Test direct avec FFmpeg :")
         self.log_text(" ".join(cmd))
@@ -1328,6 +1352,7 @@ class KageStreamWindow(Gtk.Window):
 
             if self.streamlink_can_handle_url(url):
                 cmd = [self.streamlink]
+                cmd.extend(self.streamlink_header_args(url))
                 cmd.extend(self.streamlink_codec_args(url, twitch_preference))
                 cmd.extend(["--json", url])
                 self.log_text("Commande Streamlink :")
@@ -1631,7 +1656,8 @@ class KageStreamWindow(Gtk.Window):
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                creationflags=creationflags
+                creationflags=creationflags,
+                start_new_session=(sys.platform != "win32"),
             )
 
             for line in self.process.stdout:

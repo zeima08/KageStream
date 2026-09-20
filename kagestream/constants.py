@@ -35,3 +35,9 @@ FFMPEG_HEALTH_PATTERNS = [
 RECONNECT_WINDOW_SECONDS = 120
 RECONNECT_RETRY_INTERVAL = 15
 RECONNECT_GRACE_PERIOD = 5
+
+# Certaines sources IPTV/HLS refusent ou limitent le user-agent par défaut de
+# FFmpeg (Lavf/x.y). Se faire passer pour curl avec un en-tête Accept générique
+# débloque ces sources sans rien changer pour celles qui n'en ont pas besoin.
+DIRECT_STREAM_USER_AGENT = "curl/8.22.0"
+DIRECT_STREAM_HEADERS = "Accept: */*\r\n"

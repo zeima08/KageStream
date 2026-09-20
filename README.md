@@ -131,7 +131,7 @@ Le bouton **Stop** envoie un arrêt propre à yt-dlp. KageStream tente ensuite d
 5. Choisis le format TS, MKV ou MP4.
 6. Lance l’enregistrement.
 
-KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien, FFprobe puis FFmpeg vérifient s’il s’agit d’une source multimédia directe. Les flux HTTP et HTTPS bénéficient d’options de reconnexion.
+KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien, FFprobe puis FFmpeg vérifient s’il s’agit d’une source multimédia directe. Les flux HTTP et HTTPS bénéficient d’options de reconnexion, ainsi que d’un user-agent `curl/8.22.0` et d’un en-tête `Accept: */*` (via Streamlink ou FFmpeg selon le moteur utilisé, Twitch excepté) : certaines sources IPTV/HLS/DASH refusent le user-agent par défaut et ne répondent qu’à ce genre de client.
 
 Si le flux s’interrompt brutalement en cours d’enregistrement (coupure réseau, source IPTV momentanément indisponible), KageStream retente automatiquement de retrouver la source toutes les 15 secondes pendant 2 minutes avant d’abandonner. Si la source revient, l’enregistrement reprend et les segments récupérés sont fusionnés dans le fichier final ; sinon, l’enregistrement s’arrête et conserve les données déjà capturées.
 
@@ -233,6 +233,10 @@ KageStream retente automatiquement avec un mapping réduit (sous-titres puis pis
 ### Streamlink ou FFmpeg n’est pas détecté
 
 Ouvre **Mises à jour** et utilise le bouton global d’installation. Le chemin réellement détecté est visible dans **Diagnostic**.
+
+### Une source directe (IPTV/HLS) refuse la connexion
+
+KageStream utilise automatiquement le user-agent `curl/8.22.0` et l’en-tête `Accept: */*` pour toute source HTTP/HTTPS (test comme enregistrement), que la source passe par Streamlink (flux DASH/HLS génériques) ou par FFmpeg direct — Twitch excepté, dont le user-agent par défaut de Streamlink reste nécessaire à la récupération des jetons d’accès. Certains fournisseurs IPTV filtrent le user-agent par défaut (`Lavf/x.y` pour FFmpeg, celui de Streamlink pour les flux DASH/HLS) et bloquent la connexion avec une erreur 403. Si une source refuse toujours la connexion malgré ça, le problème vient probablement d’autre chose (jeton d’accès expiré ou lié à une session/IP précise, restriction géographique) — consulte le journal technique pour le code d’erreur HTTP exact.
 
 ## Limites connues
 

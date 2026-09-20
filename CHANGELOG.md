@@ -19,6 +19,11 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 - Les décisions « Vérifier le TS / Remuxer directement », « Continuer le remux / Conserver le TS » et le repli MKV, auparavant des boîtes de dialogue bloquantes, sont maintenant des boutons non bloquants sur la ligne de chaque capture dans l’onglet **Captures** — une capture en attente de décision ne gèle plus le suivi des autres captures en cours.
 - La logique de capture (construction des commandes Streamlink/FFmpeg, reconnexion automatique, remux, conversion, analyse de santé du TS) est déplacée de `kagestream/app.py` vers le nouveau paquet `kagestream/capture/` (`job.py`, `manager.py`), sur le même principe que le gestionnaire de téléchargements musicaux.
 
+### Corrigé
+
+- Certaines sources IPTV/HLS/DASH refusaient la connexion (403) à cause du user-agent par défaut de FFmpeg (`Lavf/x.y`) ou de Streamlink. Le test de lien et l’enregistrement (capture initiale et reprises après reconnexion) envoient désormais un user-agent `curl/8.22.0` et un en-tête `Accept: */*`, aussi bien pour le flux direct FFmpeg que pour Streamlink (Twitch excepté, dont le user-agent par défaut reste nécessaire à la récupération des jetons d’accès).
+- **Stop qui n’arrêtait pas vraiment l’enregistrement** : pour un flux DASH avec vidéo et audio séparés, Streamlink démarre en interne un muxeur FFmpeg (deux tuyaux nommés fusionnés en un seul fichier). Le Stop n’envoyait le signal qu’au process Streamlink de tête ; son muxeur FFmpeg, non signalé, continuait de tourner et d’écrire le fichier indéfiniment après un Stop confirmé dans les logs (`ps aux` le montrait toujours actif). Les captures, les téléchargements YouTube/Dailymotion et les téléchargements musicaux démarrent désormais leur process dans un groupe dédié (`start_new_session`), et l’arrêt (SIGINT/SIGTERM/SIGKILL) cible tout le groupe plutôt qu’un seul PID.
+
 ## [0.7.0] - 2026-08-12
 
 ### Ajouté

@@ -1,6 +1,7 @@
 import os
 import queue
 import subprocess
+import sys
 import threading
 import uuid
 
@@ -155,12 +156,18 @@ class DownloadManager:
         window.log_text("[Musique] " + " ".join(cmd))
 
         try:
+            creationflags = 0
+            if sys.platform == "win32":
+                creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
+                creationflags=creationflags,
+                start_new_session=(sys.platform != "win32"),
             )
             job.process = process
 

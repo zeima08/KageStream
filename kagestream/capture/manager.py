@@ -20,6 +20,8 @@ from kagestream.constants import (
     RECONNECT_WINDOW_SECONDS,
     RECONNECT_RETRY_INTERVAL,
     RECONNECT_GRACE_PERIOD,
+    DIRECT_STREAM_USER_AGENT,
+    DIRECT_STREAM_HEADERS,
 )
 from kagestream.media.ffprobe import format_timecode
 from kagestream.media.process import escalate_process_stop, wait_file_closed
@@ -201,6 +203,7 @@ class CaptureManager:
         if window.streamlink_can_handle_url(job.url):
             backend = "Streamlink"
             cmd = [window.streamlink]
+            cmd.extend(window.streamlink_header_args(job.url))
             cmd.extend(window.streamlink_codec_args(job.url, job.twitch_preference))
             cmd.extend([job.url, job.quality, "-o", ts_file])
             return backend, cmd, True, ""
@@ -223,6 +226,8 @@ class CaptureManager:
                 "-reconnect", "1",
                 "-reconnect_streamed", "1",
                 "-reconnect_delay_max", "5",
+                "-user_agent", DIRECT_STREAM_USER_AGENT,
+                "-headers", DIRECT_STREAM_HEADERS,
             ])
 
         cmd.extend(["-i", job.url, "-map", "0", "-c", "copy", "-f", "mpegts", ts_file])
@@ -233,12 +238,18 @@ class CaptureManager:
         if sys.platform == "win32":
             creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
+        # start_new_session (POSIX) place le process dans son propre groupe,
+        # comme creationflags le fait côté Windows : Streamlink démarre en
+        # interne un muxeur FFmpeg (flux DASH séparés audio/vidéo) qui, sans
+        # ça, ne recevrait jamais l'arrêt et continuerait à écrire le fichier
+        # après un Stop — voir escalate_process_stop dans media/process.py.
         job.process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             creationflags=creationflags,
+            start_new_session=(sys.platform != "win32"),
         )
         return self._read_capture_process(job, backend)
 
@@ -297,6 +308,7 @@ class CaptureManager:
                     stderr=subprocess.STDOUT,
                     text=True,
                     creationflags=creationflags,
+                    start_new_session=(sys.platform != "win32"),
                 )
             except Exception as e:
                 self._log(job, f"[INFO] Reconnexion impossible : {e}")
