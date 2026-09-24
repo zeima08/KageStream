@@ -758,6 +758,7 @@ class KageStreamWindow(Gtk.Window):
             cmd = [
                 self.ffprobe,
                 "-v", "error",
+                "-extension_picky", "0",
                 "-rw_timeout", "15000000",
                 "-analyzeduration", "5000000",
                 "-probesize", "5000000",
@@ -827,6 +828,7 @@ class KageStreamWindow(Gtk.Window):
             self.ffmpeg,
             "-v", "error",
             "-nostdin",
+            "-extension_picky", "0",
             "-rw_timeout", "15000000",
         ]
         if is_http_url:

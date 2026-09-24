@@ -218,6 +218,7 @@ class CaptureManager:
             "-nostdin",
             "-hide_banner",
             "-loglevel", "warning",
+            "-extension_picky", "0",
             "-rw_timeout", "15000000",
         ]
 
