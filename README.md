@@ -214,6 +214,18 @@ Les commandes exécutées et les erreurs détaillées restent visibles dans la z
 
 ## Résolution des problèmes
 
+### YouTube demande « Sign in to confirm you’re not a bot »
+
+Le lien a été reconnu, mais YouTube demande une vérification de session.
+
+1. Ouvre la vidéo dans ton navigateur et effectue la vérification demandée par YouTube.
+2. Dans KageStream, ouvre **Outils → Dépendances** et sélectionne ce navigateur sous **Session YouTube**.
+3. Relance **Tester le lien** ou **Analyser** pour YouTube Music, puis le téléchargement.
+
+Ce choix autorise yt-dlp à lire les cookies du navigateur pour YouTube et YouTube Music ; il reste actif jusqu’à la fermeture de KageStream. Pour le désactiver, choisis **Sans cookies**. Si le navigateur n’est pas accessible ou si le blocage persiste, consulte le journal technique et mets yt-dlp à jour depuis **Dépendances et mises à jour**. L’accès aux cookies dépend de l’installation du navigateur et de son profil.
+
+Voir la [documentation officielle de yt-dlp sur les cookies](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp).
+
 ### YouTube reste limité à 360p
 
 Ouvre **Mises à jour** et installe Deno. Relance ensuite **Tester le lien**. KageStream bloque normalement le téléchargement lorsque le moteur JavaScript manque, précisément pour éviter ce résultat.

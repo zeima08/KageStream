@@ -7,6 +7,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gtk, GLib, GdkPixbuf
 
+from kagestream.media.ytdlp import analysis_error_message
 from kagestream.providers import find_provider
 from kagestream.metadata.models import FORMAT_CHOICES, PROFILES
 
@@ -199,11 +200,14 @@ def build_music_page(window):
             window.javascript_runtime_name,
             window.javascript_runtime_path,
             log_callback=window.log_text,
+            cookies_browser=window.youtube_cookies_browser,
         )
         GLib.idle_add(analyze_button.set_sensitive, True)
 
         if not album:
-            set_status(f"Analyse impossible : {error}")
+            window.log_text(error)
+            title, message = analysis_error_message(error)
+            set_status(f"{title} : {message}")
             return
 
         state["album"] = album

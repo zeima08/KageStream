@@ -8,6 +8,8 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 
 ### Ajouté
 
+- Choix facultatif du navigateur dans **Outils → Dépendances → Session YouTube** pour transmettre ses cookies à yt-dlp lors de l’analyse et du téléchargement des vidéos, lives, playlists et pistes YouTube Music.
+
 - **Captures multiples en parallèle** : la page **Capturer** (Streamlink/IPTV/FFmpeg direct) n’est plus limitée à un seul enregistrement à la fois. Chaque clic sur **Enregistrer** ou **Programmer** ajoute une nouvelle capture dans son propre thread, sans arrêter les autres. Nouvel onglet **Captures** listant toutes les captures en cours, programmées et terminées, avec statut, santé, durée/taille en direct et actions par ligne (Stop, Vérifier le TS / Remuxer, Ouvrir le dossier, Couper). Plusieurs programmations horaires peuvent aussi coexister.
 - **Découpe rapide d’un enregistrement terminé** : bouton « Couper cette vidéo… » sur une capture terminée, avec bornes début/fin (durée totale affichée via FFprobe) et copie de flux sans réencodage vers un nouveau fichier `_coupe`, sans jamais toucher au fichier original.
 - La page YouTube/Dailymotion reste inchangée (un seul téléchargement à la fois).
@@ -20,6 +22,8 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 - La logique de capture (construction des commandes Streamlink/FFmpeg, reconnexion automatique, remux, conversion, analyse de santé du TS) est déplacée de `kagestream/app.py` vers le nouveau paquet `kagestream/capture/` (`job.py`, `manager.py`), sur le même principe que le gestionnaire de téléchargements musicaux.
 
 ### Corrigé
+
+- Le refus YouTube « Sign in to confirm you’re not a bot » affiche désormais une demande de vérification de session avec les étapes à suivre, plutôt que « Lien non reconnu ». L’erreur détaillée reste dans le journal.
 
 - Certaines sources IPTV/HLS/DASH refusaient la connexion (403) à cause du user-agent par défaut de FFmpeg (`Lavf/x.y`) ou de Streamlink. Le test de lien et l’enregistrement (capture initiale et reprises après reconnexion) envoient désormais un user-agent `curl/8.22.0` et un en-tête `Accept: */*`, aussi bien pour le flux direct FFmpeg que pour Streamlink (Twitch excepté, dont le user-agent par défaut reste nécessaire à la récupération des jetons d’accès).
 - **Stop qui n’arrêtait pas vraiment l’enregistrement** : pour un flux DASH avec vidéo et audio séparés, Streamlink démarre en interne un muxeur FFmpeg (deux tuyaux nommés fusionnés en un seul fichier). Le Stop n’envoyait le signal qu’au process Streamlink de tête ; son muxeur FFmpeg, non signalé, continuait de tourner et d’écrire le fichier indéfiniment après un Stop confirmé dans les logs (`ps aux` le montrait toujours actif). Les captures, les téléchargements YouTube/Dailymotion et les téléchargements musicaux démarrent désormais leur process dans un groupe dédié (`start_new_session`), et l’arrêt (SIGINT/SIGTERM/SIGKILL) cible tout le groupe plutôt qu’un seul PID.

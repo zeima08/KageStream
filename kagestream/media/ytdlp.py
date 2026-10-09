@@ -1,13 +1,40 @@
 import json
 import re
 import subprocess
+from urllib.parse import urlparse
 
 KAGESTREAM_FINAL_MARKER = "KAGESTREAM_FINAL:"
 DOWNLOAD_PROGRESS_RE = re.compile(r"\[download\]\s+([0-9]+(?:\.[0-9]+)?%)\s*(.*)")
 
 
+def youtube_cookie_args(url, browser=None):
+    """Les cookies sont facultatifs et réservés aux domaines YouTube."""
+    host = (urlparse(url).hostname or "").lower()
+    youtube = any(
+        host == domain or host.endswith("." + domain)
+        for domain in ("youtube.com", "youtu.be", "youtube-nocookie.com")
+    )
+    if youtube and browser:
+        return ["--cookies-from-browser", browser]
+    return []
+
+
+def analysis_error_message(error):
+    if "sign in to confirm" in (error or "").lower() and "bot" in error.lower():
+        return (
+            "Vérification YouTube requise",
+            "YouTube demande de confirmer que tu n’es pas un robot. "
+            "Ouvre la vidéo dans ton navigateur et effectue la vérification demandée. "
+            "Dans « Outils → Dépendances », sélectionne ce navigateur sous "
+            "« Session YouTube », puis relance l’analyse. "
+            "Si le blocage persiste, mets yt-dlp à jour depuis cette même page. "
+            "Le détail de l’erreur est dans le journal technique.",
+        )
+    return "Lien non reconnu", error or "yt-dlp n’a pas réussi à analyser ce lien."
+
+
 def analyze_url(ytdlp_path, url, js_runtime_name=None, js_runtime_path=None,
-                 allow_playlist=False, timeout=90, log_callback=None):
+                 allow_playlist=False, timeout=90, log_callback=None, cookies_browser=None):
     """Exécute `yt-dlp --dump-single-json` sur une URL — vidéo YouTube, playlist,
     ou tout site pris en charge par yt-dlp (music.youtube.com, SoundCloud, Bandcamp...).
     Retourne (data, error) comme l'ancien KageStream.analyze_youtube."""
@@ -33,6 +60,7 @@ def analyze_url(ytdlp_path, url, js_runtime_name=None, js_runtime_path=None,
             f"{js_runtime_name}:{js_runtime_path}"
         ])
 
+    cmd.extend(youtube_cookie_args(url, cookies_browser))
     cmd.extend(["--", url])
 
     log("Commande d’analyse yt-dlp :")

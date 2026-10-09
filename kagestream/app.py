@@ -43,6 +43,7 @@ from kagestream.deps.installer import (
     ytdlp_release_asset,
 )
 from kagestream.media.ytdlp import analyze_url as ytdlp_analyze_url
+from kagestream.media.ytdlp import analysis_error_message, youtube_cookie_args
 from kagestream.media.process import (
     escalate_process_stop as escalate_process_stop_impl,
     wait_file_closed as wait_file_closed_impl,
@@ -89,6 +90,7 @@ class KageStreamWindow(Gtk.Window):
         self.ffprobe = None
         self.ytdlp = None
         self.aria2c = None
+        self.youtube_cookies_browser = None
 
         self.download_manager = DownloadManager(self)
         self.capture_manager = CaptureManager(self)
@@ -473,6 +475,30 @@ class KageStreamWindow(Gtk.Window):
         self.update_button.connect("clicked", self.show_update_checker)
         deps_page.pack_start(self.update_button, False, False, 0)
 
+        session_label = Gtk.Label(label="Session YouTube", xalign=0)
+        deps_page.pack_start(session_label, False, False, 0)
+        self.youtube_browser_combo = Gtk.ComboBoxText()
+        self.youtube_browser_combo.append("none", "Sans cookies (par défaut)")
+        for browser, label in (
+            ("firefox", "Firefox"), ("chrome", "Chrome"),
+            ("chromium", "Chromium"), ("brave", "Brave"),
+            ("edge", "Edge"), ("vivaldi", "Vivaldi"), ("opera", "Opera"),
+        ):
+            self.youtube_browser_combo.append(browser, label)
+        self.youtube_browser_combo.set_active_id("none")
+        self.youtube_browser_combo.connect("changed", self.on_youtube_browser_changed)
+        deps_page.pack_start(self.youtube_browser_combo, False, False, 0)
+        session_help = Gtk.Label(
+            label=(
+                "Si YouTube demande une vérification, ouvre la vidéo dans ton navigateur, "
+                "effectue la vérification puis sélectionne ce navigateur ici. "
+                "yt-dlp lira ses cookies pour les vidéos, lives et YouTube Music. "
+                "Ce choix reste actif jusqu’à la fermeture de KageStream."
+            ), xalign=0,
+        )
+        session_help.set_line_wrap(True)
+        deps_page.pack_start(session_help, False, False, 0)
+
         self.stack.add_titled(deps_page, "tools_deps", "Dépendances")
 
         diag_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -513,6 +539,10 @@ class KageStreamWindow(Gtk.Window):
         logs_page.pack_start(log_scroll, True, True, 0)
 
         self.stack.add_titled(logs_page, "tools_logs", "Logs")
+
+    def on_youtube_browser_changed(self, combo):
+        browser = combo.get_active_id()
+        self.youtube_cookies_browser = None if browser == "none" else browser
 
     def on_page_changed(self, stack, _param):
         page_name = stack.get_visible_child_name()
@@ -1189,6 +1219,7 @@ class KageStreamWindow(Gtk.Window):
             self.javascript_runtime_name,
             self.javascript_runtime_path,
             log_callback=self.log_text,
+            cookies_browser=self.youtube_cookies_browser,
         )
 
     def subtitle_display_name(self, code, tracks):
@@ -1251,11 +1282,12 @@ class KageStreamWindow(Gtk.Window):
 
         if not data:
             self.log_text(error)
-            self.set_status("Lien non reconnu.")
+            title, message = analysis_error_message(error)
+            self.set_status(title + ".")
             GLib.idle_add(
                 self.show_message,
-                "Lien non reconnu",
-                error or "yt-dlp n’a pas réussi à analyser ce lien.",
+                title,
+                message,
                 Gtk.MessageType.ERROR
             )
             return
@@ -1532,6 +1564,8 @@ class KageStreamWindow(Gtk.Window):
             "--output", self.youtube_output_template(folder, config["filename"], is_playlist),
             "--print", "after_move:KAGESTREAM_FINAL:%(filepath)s",
         ]
+
+        cmd.extend(youtube_cookie_args(url, self.youtube_cookies_browser))
 
         if self.javascript_runtime_name and self.javascript_runtime_path:
             cmd.extend([

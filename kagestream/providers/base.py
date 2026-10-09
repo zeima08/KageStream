@@ -9,7 +9,7 @@ class MusicProvider:
     def matches(self, url):
         raise NotImplementedError
 
-    def analyze(self, url, ytdlp_path, js_runtime_name=None, js_runtime_path=None, log_callback=None):
+    def analyze(self, url, ytdlp_path, js_runtime_name=None, js_runtime_path=None, log_callback=None, cookies_browser=None):
         raise NotImplementedError
 
 
@@ -18,7 +18,7 @@ class YtdlpMusicProvider(MusicProvider):
     Bandcamp n'ont besoin que de leur détection d'URL, yt-dlp gère déjà
     l'extraction des trois — aucune API officielle requise pour l'analyse."""
 
-    def analyze(self, url, ytdlp_path, js_runtime_name=None, js_runtime_path=None, log_callback=None):
+    def analyze(self, url, ytdlp_path, js_runtime_name=None, js_runtime_path=None, log_callback=None, cookies_browser=None):
         data, error = analyze_url(
             ytdlp_path,
             url,
@@ -26,6 +26,7 @@ class YtdlpMusicProvider(MusicProvider):
             js_runtime_path,
             allow_playlist=True,
             log_callback=log_callback,
+            cookies_browser=cookies_browser,
         )
         if not data:
             return None, error

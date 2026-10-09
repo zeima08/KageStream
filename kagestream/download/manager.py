@@ -9,7 +9,7 @@ from gi.repository import GLib
 
 from kagestream.download.job import DownloadJob, JobState, TrackJob
 from kagestream.media.process import escalate_process_stop
-from kagestream.media.ytdlp import extract_final_path, parse_download_progress
+from kagestream.media.ytdlp import extract_final_path, parse_download_progress, youtube_cookie_args
 from kagestream.utils.filenames import safe_join_under, sanitize_path_component
 
 
@@ -129,6 +129,8 @@ class DownloadManager:
             "--output", output_template,
             "--print", "after_move:KAGESTREAM_FINAL:%(filepath)s",
         ]
+
+        cmd.extend(youtube_cookie_args(track.url, window.youtube_cookies_browser))
 
         if job.format_id and job.format_id != "original":
             cmd.extend(["-x", "--audio-format", job.format_id, "--audio-quality", str(job.quality)])
