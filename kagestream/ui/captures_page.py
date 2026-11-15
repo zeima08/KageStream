@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 
 import gi
@@ -7,6 +8,8 @@ from gi.repository import Gtk, GLib
 
 from kagestream.capture.job import CaptureState
 from kagestream.media.ffprobe import probe_duration, parse_timecode, format_timecode
+from kagestream.ui.job_rows import SectionedJobList
+from kagestream.ui.widgets import button, page_container, section
 from kagestream.utils.paths import open_folder
 
 ACTIVE_STATES = {
@@ -23,6 +26,15 @@ ACTIVE_STATES = {
 DONE_STATES = {CaptureState.TERMINE, CaptureState.ANNULE, CaptureState.ERREUR}
 
 
+EMPTY_TEXTS = {
+    "active": "Aucune capture en cours.",
+    "pending": "Aucune capture programmée.",
+    "done": "Aucune capture terminée.",
+}
+
+
+
+
 def _format_duration(seconds):
     seconds = max(0, int(seconds))
     h = seconds // 3600
@@ -32,41 +44,39 @@ def _format_duration(seconds):
 
 
 def build_captures_page(window):
-    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-    outer.set_border_width(12)
-
-    intro = Gtk.Label(
-        label=(
-            "Toutes les captures lancées depuis l’onglet Capturer, avec leur statut, "
-            "leur santé et les actions disponibles. Plusieurs captures peuvent tourner "
-            "en même temps."
-        ),
-        xalign=0,
+    outer, content = page_container(
+        "Captures",
+        "Toutes les captures lancées depuis Capturer, avec leur statut, leur santé et "
+        "les actions disponibles. Plusieurs captures peuvent tourner en même temps.",
     )
-    intro.set_line_wrap(True)
-    outer.pack_start(intro, False, False, 0)
+
+    clear_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    clear_button = button(
+        "Vider les terminées", lambda: window.capture_manager.clear_finished(),
+        tooltip="Retire de la liste les captures terminées, annulées ou en erreur. "
+                "Les fichiers produits ne sont pas supprimés.",
+    )
+    clear_row.pack_end(clear_button, False, False, 0)
+    content.pack_start(clear_row, False, False, 0)
 
     sections = {}
     for key, title in (("active", "En cours"), ("pending", "Programmées"), ("done", "Terminées")):
-        frame = Gtk.Frame(label=title)
+        card = section(title)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.set_border_width(8)
-        frame.add(box)
-        outer.pack_start(frame, False, False, 0)
+        card.pack_start(box, False, False, 0)
+        content.pack_start(card, False, False, 0)
         sections[key] = box
-
-    def clear_section(box):
-        for child in list(box.get_children()):
-            box.remove(child)
 
     def open_job_folder(job):
         target = job.cut_file or job.final_file or job.current_ts_file or job.folder
         open_folder(target)
 
     def show_cut_dialog(job):
-        total_duration = probe_duration(window.ffprobe, job.final_file)
-
-        dialog = Gtk.Dialog(title="Couper cette vidéo", transient_for=window, flags=0)
+        dialog = Gtk.Dialog(
+            title="Couper cette vidéo",
+            transient_for=window,
+            flags=Gtk.DialogFlags.MODAL | Gtk.DialogFlags.DESTROY_WITH_PARENT
+        )
         dialog.add_button("Annuler", Gtk.ResponseType.CANCEL)
         dialog.add_button("Couper", Gtk.ResponseType.OK)
         dialog.set_default_size(420, -1)
@@ -79,11 +89,7 @@ def build_captures_page(window):
         content.set_spacing(8)
 
         duration_label = Gtk.Label(xalign=0)
-        duration_label.set_text(
-            f"Durée totale : {format_timecode(total_duration)}"
-            if total_duration is not None
-            else "Durée totale inconnue (ffprobe indisponible)."
-        )
+        duration_label.set_text("Durée totale : calcul en cours…")
         content.pack_start(duration_label, False, False, 0)
 
         grid = Gtk.Grid(column_spacing=10, row_spacing=8)
@@ -94,8 +100,6 @@ def build_captures_page(window):
         start_entry.set_text("0")
         end_entry = Gtk.Entry()
         end_entry.set_placeholder_text("HH:MM:SS, MM:SS ou secondes")
-        if total_duration is not None:
-            end_entry.set_text(format_timecode(total_duration))
 
         grid.attach(Gtk.Label(label="Début", xalign=0), 0, 0, 1, 1)
         grid.attach(start_entry, 1, 0, 1, 1)
@@ -108,11 +112,32 @@ def build_captures_page(window):
 
         content.show_all()
 
+        duration_state = {"total": None}
+
+        def duration_ready(total):
+            duration_state["total"] = total
+            if total is not None:
+                duration_label.set_text(f"Durée totale : {format_timecode(total)}")
+                if not end_entry.get_text().strip():
+                    end_entry.set_text(format_timecode(total))
+            else:
+                duration_label.set_text("Durée totale inconnue (ffprobe indisponible).")
+            return False
+
+        def probe_worker():
+            # ffprobe sur un gros fichier peut prendre plusieurs secondes :
+            # hors de question de bloquer le thread GTK pendant la sonde.
+            total = probe_duration(window.ffprobe, job.final_file)
+            GLib.idle_add(duration_ready, total)
+
+        threading.Thread(target=probe_worker, daemon=True).start()
+
         def on_response(dlg, response_id):
             if response_id != Gtk.ResponseType.OK:
                 dlg.destroy()
                 return
 
+            total_duration = duration_state["total"]
             start_seconds = parse_timecode(start_entry.get_text())
             end_seconds = parse_timecode(end_entry.get_text())
 
@@ -133,31 +158,21 @@ def build_captures_page(window):
         dialog.show()
 
     def build_job_row(job):
+        """Construit la rangée d'une capture et retourne (widget, refresh).
+        `refresh` met à jour les textes sans toucher à la structure : la
+        rangée n'est reconstruite que si sa signature change (voir
+        row_signature)."""
         row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         row.set_margin_bottom(6)
 
         header = Gtk.Label(xalign=0)
-        header.set_markup(
-            f"<b>{GLib.markup_escape_text(job.label)}</b>"
-            + (f" — {GLib.markup_escape_text(job.active_backend)}" if job.active_backend else "")
-        )
         row.pack_start(header, False, False, 0)
 
-        status_text = job.state.value
-        if job.state in (CaptureState.EN_COURS, CaptureState.RECONNEXION) and job.recording_start:
-            elapsed = _format_duration(time.time() - job.recording_start)
-            size_mb = 0.0
-            if job.current_ts_file and os.path.exists(job.current_ts_file):
-                size_mb = os.path.getsize(job.current_ts_file) / 1024 / 1024
-            status_text += f" — Durée : {elapsed} — Taille : {size_mb:.1f} Mo"
-        if job.stream_health not in ("", "Non analysé"):
-            status_text += f" — Santé : {job.stream_health}"
-        if job.state == CaptureState.ERREUR and job.error:
-            status_text += f" — {job.error}"
-        status_label = Gtk.Label(label=status_text, xalign=0)
+        status_label = Gtk.Label(xalign=0)
         status_label.set_line_wrap(True)
         row.pack_start(status_label, False, False, 0)
 
+        report_label = None
         if job.last_health_report and job.state in (
             CaptureState.DECISION_POST_VERIF, CaptureState.DECISION_MKV
         ):
@@ -217,34 +232,66 @@ def build_captures_page(window):
                 add_button("Ouvrir le dossier", lambda j=job: open_job_folder(j))
             if job.state == CaptureState.TERMINE and job.final_file and os.path.isfile(job.final_file):
                 add_button("Couper cette vidéo…", lambda j=job: show_cut_dialog(j))
+            add_button(
+                "Retirer de la liste",
+                lambda j=job: window.capture_manager.remove_job(j)
+            )
 
+        def status_text():
+            text = job.state.value
+            if job.state in (CaptureState.EN_COURS, CaptureState.RECONNEXION) and job.recording_start:
+                elapsed = _format_duration(time.time() - job.recording_start)
+                size_mb = 0.0
+                if job.current_ts_file and os.path.exists(job.current_ts_file):
+                    size_mb = os.path.getsize(job.current_ts_file) / 1024 / 1024
+                text += f" — Durée : {elapsed} — Taille : {size_mb:.1f} Mo"
+            if job.stream_health not in ("", "Non analysé"):
+                text += f" — Santé : {job.stream_health}"
+            if job.state == CaptureState.ERREUR and job.error:
+                text += f" — {job.error}"
+            return text
+
+        def refresh():
+            header.set_markup(
+                f"<b>{GLib.markup_escape_text(job.label)}</b>"
+                + (f" — {GLib.markup_escape_text(job.active_backend)}" if job.active_backend else "")
+            )
+            status_label.set_text(status_text())
+            if report_label is not None:
+                report_label.set_text(job.last_health_report or "")
+            return False
+
+        refresh()
         row.show_all()
-        return row
+        return row, refresh
+
+    def row_signature(job):
+        """Signature structurelle : une rangée n'est reconstruite que si l'un
+        de ces éléments change (les autres sont de simples textes)."""
+        return (
+            job.state,
+            job.active_backend,
+            bool(job.cut_file),
+            bool(job.final_file) if job.state in DONE_STATES else False,
+        )
+
+    def section_for(job):
+        if job.state == CaptureState.EN_ATTENTE:
+            return "pending"
+        if job.state in DONE_STATES:
+            return "done"
+        return "active"
 
     def refresh():
-        for box in sections.values():
-            clear_section(box)
+        entries = [
+            (job.id, section_for(job), row_signature(job), lambda j=job: build_job_row(j))
+            for job in window.capture_manager.jobs
+        ]
+        return job_list.sync(entries)
 
-        jobs = window.capture_manager.jobs
-        for job in jobs:
-            if job.state == CaptureState.EN_ATTENTE:
-                sections["pending"].pack_start(build_job_row(job), False, False, 0)
-            elif job.state in DONE_STATES:
-                sections["done"].pack_start(build_job_row(job), False, False, 0)
-            else:
-                sections["active"].pack_start(build_job_row(job), False, False, 0)
-
-        if not jobs:
-            placeholder = Gtk.Label(label="Aucune capture pour le moment.", xalign=0)
-            placeholder.show()
-            sections["active"].pack_start(placeholder, False, False, 0)
-
-        return False
+    job_list = SectionedJobList(sections, EMPTY_TEXTS)
 
     window.capture_manager.add_listener(refresh)
     refresh()
 
-    scroller = Gtk.ScrolledWindow()
-    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.add(outer)
-    return scroller
+    return outer

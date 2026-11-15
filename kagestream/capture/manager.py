@@ -15,8 +15,8 @@ from gi.repository import GLib
 
 from kagestream.capture.job import CaptureJob, CaptureState
 from kagestream.constants import (
-    BAD_STREAM_PATTERNS,
-    FFMPEG_HEALTH_PATTERNS,
+    matches_stream_problem,
+    is_serious_ffmpeg_issue,
     RECONNECT_WINDOW_SECONDS,
     RECONNECT_RETRY_INTERVAL,
     RECONNECT_GRACE_PERIOD,
@@ -24,7 +24,43 @@ from kagestream.constants import (
     DIRECT_STREAM_HEADERS,
 )
 from kagestream.media.ffprobe import format_timecode
-from kagestream.media.process import escalate_process_stop, wait_file_closed
+from kagestream.media.sources import (
+    SourceTools,
+    streamlink_can_handle_url,
+    streamlink_codec_args,
+    streamlink_header_args,
+    probe_direct_source,
+)
+from kagestream.media.process import (
+    escalate_process_stop,
+    escalate_processes_stop,
+    kill_process_group,
+    wait_file_closed,
+)
+from kagestream.utils.filenames import sanitize_path_component
+
+# Délais max des sous-processus de finalisation : base fixe + marge par Gio,
+# pour ne jamais tuer un traitement légitime tout en débloquant la file si
+# FFmpeg reste bloqué (TS corrompu, entrée spéciale). La conversion (réencodage)
+# est des ordres de grandeur plus lente que le remux (copie de flux).
+HEALTH_TIMEOUT_BASE = 120
+HEALTH_TIMEOUT_PER_GB = 60
+REMUX_TIMEOUT_BASE = 180
+REMUX_TIMEOUT_PER_GB = 60
+TRANSCODE_TIMEOUT_BASE = 5400
+TRANSCODE_TIMEOUT_PER_GB = 1800
+CUT_TIMEOUT_BASE = 120
+CUT_TIMEOUT_PER_GB = 60
+
+
+def finalize_timeout(file_path, base, per_gb):
+    """Délai maximal d'un sous-processus de finalisation, dimensionné sur la
+    taille du fichier à traiter."""
+    try:
+        size_gb = os.path.getsize(file_path) / (1024 ** 3)
+    except OSError:
+        size_gb = 1.0
+    return int(base + per_gb * max(size_gb, 0.05))
 
 
 class CaptureManager:
@@ -37,14 +73,22 @@ class CaptureManager:
     par un unique thread, pour qu'un seul remux/conversion tourne à la fois
     même si plusieurs captures se terminent en même temps."""
 
-    def __init__(self, window):
-        self.window = window
+    def __init__(self, tools_provider, log_callback):
+        """`tools_provider` est un appelable sans argument qui retourne un
+        SourceTools à jour (les chemins changent après une installation) ;
+        `log_callback` reçoit le texte destiné au journal. Aucune dépendance
+        à une fenêtre GTK : le manager est utilisable et testable sans UI."""
+        self._tools_provider = tools_provider
+        self._log_callback = log_callback
         self.jobs = []
         self._listeners = []
         self._finalize_queue = queue.Queue()
+        self._reserved_outputs = set()
+        self._reserved_outputs_lock = threading.Lock()
+        self._finalize_proc = None
+        self._tick_id = None
 
         threading.Thread(target=self._finalize_loop, daemon=True).start()
-        GLib.timeout_add(1000, self._tick)
 
     # ------------------------------------------------------------------
     # Notification UI
@@ -60,13 +104,43 @@ class CaptureManager:
         active_states = (CaptureState.EN_COURS, CaptureState.RECONNEXION)
         if any(job.state in active_states for job in self.jobs):
             self._notify()
-        return True
+            return True
+        # Plus rien à rafraîchir : le timer s'éteint au lieu de réveiller la
+        # boucle GLib chaque seconde pendant toute la session.
+        self._tick_id = None
+        return False
+
+    def _ensure_tick(self):
+        if self._tick_id is None:
+            self._tick_id = GLib.timeout_add(1000, self._tick)
+        return False
+
+    def remove_job(self, job):
+        """Retire une tâche terminée de la liste affichée. Le fichier produit
+        n'est jamais touché."""
+        if job.state in (CaptureState.EN_COURS, CaptureState.RECONNEXION,
+                          CaptureState.EN_ATTENTE):
+            return False
+        if job in self.jobs:
+            self.jobs.remove(job)
+            self._notify()
+        return False
+
+    def clear_finished(self):
+        """Vide les captures terminées, annulées ou en erreur."""
+        done = (CaptureState.TERMINE, CaptureState.ANNULE, CaptureState.ERREUR)
+        self.jobs = [job for job in self.jobs if job.state not in done]
+        self._notify()
+        return False
 
     def _log(self, job, text):
         if not text:
-            self.window.log_text("")
+            self._log_callback("")
         else:
-            self.window.log_text(f"[{job.label}] {text}")
+            self._log_callback(f"[{job.label}] {text}")
+
+    def _tools(self):
+        return self._tools_provider()
 
     def _label_from_url(self, url):
         try:
@@ -98,11 +172,12 @@ class CaptureManager:
                        filename, folder):
         job = self._build_job(url, quality, twitch_preference, profile, output_format,
                                filename, folder)
-        ts_file = os.path.join(folder, filename) + ".ts"
+        ts_file = self._reserve_ts_path(job.folder, job.filename)
         job.current_ts_file = ts_file
         job.final_file = ts_file
         self.jobs.append(job)
         self._notify()
+        self._ensure_tick()
 
         threading.Thread(target=self._record_worker, args=(job,), daemon=True).start()
         return job
@@ -115,6 +190,7 @@ class CaptureManager:
         )
         self.jobs.append(job)
         self._notify()
+        self._ensure_tick()
 
         threading.Thread(
             target=self._schedule_worker, args=(job, start_at, end_at), daemon=True
@@ -125,30 +201,58 @@ class CaptureManager:
         job.schedule_cancelled = True
         self._notify()
 
+    def _abort_schedule_if_cancelled(self, job):
+        if not job.schedule_cancelled:
+            return False
+        self._log(job, "[INFO] Programmation annulée avant le démarrage.")
+        job.state = CaptureState.ANNULE
+        self._notify()
+        return True
+
+    def _reserve_ts_path(self, folder, filename):
+        """Choisit un chemin .ts qui n'écrase ni un fichier existant ni une
+        capture de la session en cours : nom.ts, puis nom-2.ts, nom-3.ts, …
+        Le fichier étant créé par le sous-processus quelques instants plus
+        tard, les chemins déjà réservés sont mémorisés pour éviter qu'une
+        seconde capture démarrée entre-temps ne reçoive le même nom."""
+        stem = sanitize_path_component(filename, "capture")
+        with self._reserved_outputs_lock:
+            candidate = os.path.join(folder, f"{stem}.ts")
+            counter = 2
+            while candidate in self._reserved_outputs or os.path.exists(candidate):
+                candidate = os.path.join(folder, f"{stem}-{counter}.ts")
+                counter += 1
+            self._reserved_outputs.add(candidate)
+            return candidate
+
     def _schedule_worker(self, job, start_at, end_at):
         try:
             while True:
                 remaining = (start_at - datetime.now()).total_seconds()
                 if remaining <= 0:
                     break
-                if job.schedule_cancelled:
-                    self._log(job, "[INFO] Programmation annulée avant le démarrage.")
-                    job.state = CaptureState.ANNULE
-                    self._notify()
+                if self._abort_schedule_if_cancelled(job):
                     return
                 time.sleep(min(remaining, 1))
+
+            # L'annulation peut tomber pendant le dernier time.sleep : il faut
+            # relire le drapeau après la sortie de boucle, sinon l'enregistrement
+            # démarrerait malgré l'annulation demandée.
+            if self._abort_schedule_if_cancelled(job):
+                return
 
             self._log(
                 job,
                 "[INFO] Heure de début atteinte — lancement de l’enregistrement programmé."
             )
-            ts_file = os.path.join(job.folder, job.filename) + ".ts"
+            ts_file = self._reserve_ts_path(job.folder, job.filename)
             job.current_ts_file = ts_file
             job.final_file = ts_file
 
             threading.Thread(
                 target=self._watch_schedule_end, args=(job, end_at), daemon=True
             ).start()
+            GLib.idle_add(self._ensure_tick)
             self._record_worker(job)
 
         except Exception as e:
@@ -190,30 +294,54 @@ class CaptureManager:
                 if wait_file_closed(ts_file):
                     self._log(job, "[INFO] Fichier TS fermé correctement.")
                 else:
-                    self._log(job, "[INFO] Impossible de confirmer la fermeture complète du fichier TS.")
+                    self._log(
+                        job,
+                        "[INFO] Un processus garde encore le fichier TS ouvert après "
+                        "l’arrêt — il peut rester incomplet."
+                    )
         except Exception as e:
             self._log(job, f"Erreur pendant l’arrêt : {e}")
+
+    def shutdown(self):
+        """Arrête tous les sous-processus actifs — appelé à la fermeture de la
+        fenêtre : les enregistrements tournant dans des groupes de processus
+        dédiés (start_new_session), ils survivraient à l'application et
+        continueraient d'écrire leurs fichiers en arrière-plan."""
+        procs = []
+        for job in list(self.jobs):
+            job.cancel_requested = True
+            job.schedule_cancelled = True
+            if job.process is not None and job.process.poll() is None:
+                procs.append(job.process)
+        if self._finalize_proc is not None and self._finalize_proc.poll() is None:
+            procs.append(self._finalize_proc)
+        escalate_processes_stop(procs, log_callback=self._log_callback)
 
     # ------------------------------------------------------------------
     # Construction / exécution de la commande d'enregistrement
     # ------------------------------------------------------------------
     def _build_record_command(self, job, ts_file):
-        window = self.window
+        tools = self._tools()
 
-        if window.streamlink_can_handle_url(job.url):
+        if streamlink_can_handle_url(tools.streamlink, job.url):
             backend = "Streamlink"
-            cmd = [window.streamlink]
-            cmd.extend(window.streamlink_header_args(job.url))
-            cmd.extend(window.streamlink_codec_args(job.url, job.twitch_preference))
+            cmd = [tools.streamlink]
+            cmd.extend(streamlink_header_args(job.url))
+            cmd.extend(
+                streamlink_codec_args(job.url, job.twitch_preference, tools.streamlink_version)
+            )
             cmd.extend([job.url, job.quality, "-o", ts_file])
             return backend, cmd, True, ""
 
-        valid, details = window.probe_direct_source(job.url)
+        valid, details = probe_direct_source(
+            tools.ffmpeg, tools.ffprobe, job.url,
+            log_callback=tools.log_callback,
+        )
         if not valid:
             return None, None, False, details
 
         cmd = [
-            window.ffmpeg,
+            tools.ffmpeg,
             "-y",
             "-nostdin",
             "-hide_banner",
@@ -264,18 +392,19 @@ class CaptureManager:
         return job.process.returncode
 
     def _inspect_streamlink_line(self, job, line):
-        lower = (line or "").lower()
-        if any(pattern in lower for pattern in BAD_STREAM_PATTERNS):
-            job.stream_warning_count += 1
-            self._log(job, f"⚠️ Signal suspect #{job.stream_warning_count} : {line}")
+        if not matches_stream_problem(line):
+            return
 
-            if job.stream_warning_count >= 5:
-                job.stream_health = "instable"
-                job.last_health_report = f"{job.stream_warning_count} signaux suspects"
-            else:
-                job.stream_health = "à surveiller"
-                job.last_health_report = f"{job.stream_warning_count} signal suspect"
-            self._notify()
+        job.stream_warning_count += 1
+        self._log(job, f"⚠️ Signal suspect #{job.stream_warning_count} : {line}")
+
+        if job.stream_warning_count >= 5:
+            job.stream_health = "instable"
+            job.last_health_report = f"{job.stream_warning_count} signaux suspects"
+        else:
+            job.stream_health = "à surveiller"
+            job.last_health_report = f"{job.stream_warning_count} signal suspect"
+        self._notify()
 
     def _attempt_reconnect(self, job, ts_file, segment_files, previous_backend):
         job.state = CaptureState.RECONNEXION
@@ -324,6 +453,11 @@ class CaptureManager:
 
             if has_data and still_running and not job.cancel_requested:
                 self._log(job, f"[INFO] Source retrouvée — reprise de l’enregistrement ({backend}).")
+                # Repartir d'un compteur propre : les alertes de la connexion
+                # précédente ne doivent pas condamner la nouvelle session.
+                job.stream_warning_count = 0
+                job.stream_health = "Non analysé"
+                job.last_health_report = ""
                 segment_files.append(segment_path)
                 job.current_ts_file = segment_path
                 return backend
@@ -477,7 +611,7 @@ class CaptureManager:
             try:
                 task()
             except Exception as e:
-                self.window.log_text(f"[Finalisation] Erreur inattendue : {e}")
+                self._log_callback(f"[Finalisation] Erreur inattendue : {e}")
 
     def resolve_decision(self, job, choice):
         ts_file = job.pending_ts_file
@@ -546,9 +680,62 @@ class CaptureManager:
             job.state = CaptureState.ERREUR
             self._notify()
 
+    def _run_finalize_process(self, job, cmd, description, timeout):
+        """Lance un FFmpeg de finalisation dans son propre groupe de processus,
+        journalise sa sortie et applique un garde-fou : au-delà de `timeout`
+        secondes sans fin, le groupe est tué (SIGKILL) pour ne jamais bloquer
+        la file de finalisation — un FFmpeg figé sur un TS corrompu la
+        gelait auparavant pour toujours. Retourne (proc, expiré, lignes)."""
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            creationflags=creationflags,
+            start_new_session=(sys.platform != "win32"),
+        )
+        self._finalize_proc = proc
+        # Permet au bouton Stop de la ligne d'arrêter aussi un remux ou une
+        # conversion en cours, comme pour l'enregistrement.
+        job.process = proc
+
+        state = {"expired": False}
+
+        def expire():
+            state["expired"] = True
+            self._log(
+                job,
+                f"[ERREUR] {description} : {timeout} s écoulées sans fin — "
+                "arrêt forcé de FFmpeg pour débloquer la file de finalisation."
+            )
+            kill_process_group(proc)
+
+        watchdog = threading.Timer(timeout, expire)
+        watchdog.daemon = True
+        watchdog.start()
+
+        lines = []
+        try:
+            for line in proc.stdout:
+                clean = line.rstrip()
+                if clean:
+                    lines.append(clean)
+                    self._log(job, clean)
+            proc.wait()
+        finally:
+            watchdog.cancel()
+            self._finalize_proc = None
+            job.process = None
+
+        return proc, state["expired"], lines
+
     def _check_recording_health(self, job, file_path):
-        window = self.window
-        if not window.ffmpeg or not os.path.exists(file_path):
+        tools = self._tools()
+        if not tools.ffmpeg or not os.path.exists(file_path):
             job.last_health_report = "Analyse impossible : FFmpeg ou fichier introuvable."
             self._log(job, job.last_health_report)
             return False
@@ -558,7 +745,7 @@ class CaptureManager:
         self._log(job, "[INFO] Analyse du TS")
         self._log(job, f"Fichier analysé : {file_path}")
 
-        cmd = [window.ffmpeg, "-v", "warning", "-i", file_path, "-f", "null", "-"]
+        cmd = [tools.ffmpeg, "-v", "warning", "-i", file_path, "-f", "null", "-"]
         self._log(job, "Commande analyse :")
         self._log(job, " ".join(cmd))
 
@@ -569,20 +756,14 @@ class CaptureManager:
         timestamp_errors = []
 
         try:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            timeout = finalize_timeout(file_path, HEALTH_TIMEOUT_BASE, HEALTH_TIMEOUT_PER_GB)
+            proc, expired, issues = self._run_finalize_process(
+                job, cmd, "Analyse du TS", timeout
             )
 
-            for line in proc.stdout:
-                clean = line.rstrip()
-                if not clean:
-                    continue
-
-                self._log(job, clean)
-                issues.append(clean)
-
+            for clean in issues:
                 lower = clean.lower()
-                if any(pattern in lower for pattern in FFMPEG_HEALTH_PATTERNS):
+                if is_serious_ffmpeg_issue(clean):
                     serious_issues.append(clean)
                 if "corrupt" in lower:
                     corrupted_packets.append(clean)
@@ -591,9 +772,9 @@ class CaptureManager:
                 if "timestamp" in lower or "pts" in lower:
                     timestamp_errors.append(clean)
 
-            proc.wait()
-
-            if proc.returncode not in (0, None):
+            if expired:
+                serious_issues.append(f"Analyse interrompue : délai de {timeout} s dépassé.")
+            elif proc.returncode != 0:
                 serious_issues.append(f"FFmpeg a terminé avec le code {proc.returncode}")
 
             job.last_ts_analysis = {
@@ -635,9 +816,9 @@ class CaptureManager:
     def _do_remux(self, job, ts_file, fmt):
         job.state = CaptureState.REMUX
         self._notify()
-        window = self.window
+        tools = self._tools()
 
-        if not window.ffmpeg:
+        if not tools.ffmpeg:
             self._log(job, "Remux impossible : FFmpeg introuvable.")
             job.error = "FFmpeg introuvable"
             job.final_file = ts_file
@@ -677,27 +858,29 @@ class CaptureManager:
         self._log(job, "[INFO] Remux lancé")
 
         try:
+            expired = False
             for index, (extra_args, label) in enumerate(mapping_attempts):
-                cmd = [window.ffmpeg, "-y", "-i", ts_file] + extra_args + [output]
+                cmd = [tools.ffmpeg, "-y", "-i", ts_file] + extra_args + [output]
 
                 self._log(job, "Commande FFmpeg :" if index == 0 else f"Nouvelle tentative ({label}) :")
                 self._log(job, " ".join(cmd))
 
-                proc = subprocess.Popen(
-                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-                )
-                for line in proc.stdout:
-                    self._log(job, line.rstrip())
-                proc.wait()
-                returncode = proc.returncode
+                timeout = finalize_timeout(ts_file, REMUX_TIMEOUT_BASE, REMUX_TIMEOUT_PER_GB)
+                proc, expired, _lines = self._run_finalize_process(job, cmd, "Remux", timeout)
 
-                if returncode == 0 and os.path.isfile(output) and os.path.getsize(output) > 0:
+                if (not expired and proc.returncode == 0
+                        and os.path.isfile(output) and os.path.getsize(output) > 0):
                     job.final_file = output
                     job.state = CaptureState.TERMINE
                     self._log(job, f"Remux terminé : {output}")
                     self._log(job, "[INFO] Remux terminé")
                     self._notify()
                     return
+
+                if expired:
+                    # FFmpeg est resté bloqué sur ce fichier : réessayer avec un
+                    # mapping réduit ne changerait rien.
+                    break
 
                 if index < len(mapping_attempts) - 1:
                     self._log(
@@ -713,7 +896,11 @@ class CaptureManager:
                 job.state = CaptureState.DECISION_MKV
                 self._notify()
             else:
-                job.error = "FFmpeg n’a pas réussi à remuxer ce fichier, même avec un mapping réduit."
+                job.error = (
+                    "Délai de remux dépassé — FFmpeg a été arrêté de force."
+                    if expired
+                    else "FFmpeg n’a pas réussi à remuxer ce fichier, même avec un mapping réduit."
+                )
                 job.final_file = ts_file
                 job.state = CaptureState.ERREUR
                 self._log(job, job.error + " Le TS est conservé.")
@@ -727,12 +914,12 @@ class CaptureManager:
             self._notify()
 
     def _ffmpeg_encoder_available(self, encoder):
-        window = self.window
-        if not window.ffmpeg:
+        tools = self._tools()
+        if not tools.ffmpeg:
             return False
         try:
             result = subprocess.run(
-                [window.ffmpeg, "-hide_banner", "-encoders"],
+                [tools.ffmpeg, "-hide_banner", "-encoders"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -743,8 +930,8 @@ class CaptureManager:
             return False
 
     def _do_transcode(self, job, ts_file, fmt, profile):
-        window = self.window
-        if not window.ffmpeg or not os.path.exists(ts_file):
+        tools = self._tools()
+        if not tools.ffmpeg or not os.path.exists(ts_file):
             self._log(job, "Conversion impossible : FFmpeg ou fichier TS introuvable.")
             job.error = "FFmpeg ou fichier TS introuvable"
             job.final_file = ts_file
@@ -798,7 +985,7 @@ class CaptureManager:
 
         output = os.path.splitext(ts_file)[0] + "." + fmt
         cmd = [
-            window.ffmpeg,
+            tools.ffmpeg,
             "-y",
             "-hide_banner",
             "-i", ts_file,
@@ -816,22 +1003,22 @@ class CaptureManager:
         self._log(job, " ".join(cmd))
 
         try:
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            timeout = finalize_timeout(ts_file, TRANSCODE_TIMEOUT_BASE, TRANSCODE_TIMEOUT_PER_GB)
+            process, expired, _lines = self._run_finalize_process(
+                job, cmd, f"Conversion {settings['label']}", timeout
             )
-            job.process = process
-            for line in process.stdout:
-                self._log(job, line.rstrip())
-            process.wait()
-            job.process = None
 
-            if process.returncode == 0 and os.path.isfile(output):
+            if not expired and process.returncode == 0 and os.path.isfile(output):
                 job.final_file = output
                 job.state = CaptureState.TERMINE
                 self._log(job, f"Conversion terminée : {output}")
             else:
                 job.final_file = ts_file
-                job.error = "La conversion a échoué ou a été arrêtée."
+                job.error = (
+                    f"Conversion interrompue : délai de {timeout} s dépassé."
+                    if expired
+                    else "La conversion a échoué ou a été arrêtée."
+                )
                 job.state = CaptureState.ERREUR
                 self._log(job, f"{job.error} Le TS est conservé : {ts_file}")
         except Exception as e:
@@ -852,10 +1039,10 @@ class CaptureManager:
         ).start()
 
     def _cut_worker(self, job, start_seconds, end_seconds):
-        window = self.window
+        tools = self._tools()
         source = job.final_file
 
-        if not window.ffmpeg or not source or not os.path.isfile(source):
+        if not tools.ffmpeg or not source or not os.path.isfile(source):
             self._log(job, "[Découpe] Impossible : FFmpeg ou fichier source introuvable.")
             return
 
@@ -867,7 +1054,7 @@ class CaptureManager:
             counter += 1
 
         cmd = [
-            window.ffmpeg, "-y",
+            tools.ffmpeg, "-y",
             "-ss", format_timecode(start_seconds),
             "-to", format_timecode(end_seconds),
             "-i", source,
@@ -878,16 +1065,16 @@ class CaptureManager:
         self._log(job, "[Découpe] " + " ".join(cmd))
 
         try:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            timeout = finalize_timeout(source, CUT_TIMEOUT_BASE, CUT_TIMEOUT_PER_GB)
+            proc, expired, _lines = self._run_finalize_process(
+                job, cmd, "Découpe", timeout
             )
-            for line in proc.stdout:
-                self._log(job, f"[Découpe] {line.rstrip()}")
-            proc.wait()
 
-            if proc.returncode == 0 and os.path.isfile(output):
+            if not expired and proc.returncode == 0 and os.path.isfile(output):
                 job.cut_file = output
                 self._log(job, f"[Découpe] Fichier coupé : {output}")
+            elif expired:
+                self._log(job, f"[Découpe] Délai de {timeout} s dépassé — découpe interrompue.")
             else:
                 self._log(job, "[Découpe] Échec de la découpe.")
         except Exception as e:

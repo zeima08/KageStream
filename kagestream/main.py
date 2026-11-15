@@ -7,7 +7,8 @@ from kagestream.app import KageStreamWindow
 
 def main():
     win = KageStreamWindow()
-    win.connect("destroy", Gtk.main_quit)
+    # L'arrêt des sous-processus à la fermeture est géré par KageStreamWindow
+    # (signal "destroy" -> shutdown puis Gtk.main_quit).
     win.show_all()
     Gtk.main()
 

@@ -3,34 +3,46 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib
 
 from kagestream.download.job import JobState
+from kagestream.ui.job_rows import SectionedJobList
+from kagestream.ui.widgets import button, page_container, section
 from kagestream.utils.paths import open_folder
 
 
-def build_downloads_page(window):
-    outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-    outer.set_border_width(12)
+EMPTY_TEXTS = {
+    "active": "Aucun téléchargement en cours.",
+    "pending": "Aucun téléchargement en attente.",
+    "done": "Aucun téléchargement terminé.",
+}
 
-    intro = Gtk.Label(
-        label="File d’attente des téléchargements musicaux (YouTube Music, SoundCloud, Bandcamp).",
-        xalign=0,
+
+def build_downloads_page(window):
+    outer, content = page_container(
+        "Téléchargements",
+        "File d’attente des téléchargements musicaux (YouTube Music, SoundCloud, Bandcamp).",
     )
-    intro.set_line_wrap(True)
-    outer.pack_start(intro, False, False, 0)
+
+    clear_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    clear_row.pack_end(
+        button(
+            "Vider les terminés", lambda: window.download_manager.clear_finished(),
+            tooltip="Retire de la liste les téléchargements terminés, annulés ou en "
+                    "erreur. Les fichiers téléchargés ne sont pas supprimés.",
+        ),
+        False, False, 0,
+    )
+    content.pack_start(clear_row, False, False, 0)
 
     sections = {}
     for key, title in (("active", "En cours"), ("pending", "En attente"), ("done", "Terminés")):
-        frame = Gtk.Frame(label=title)
+        card = section(title)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        box.set_border_width(8)
-        frame.add(box)
-        outer.pack_start(frame, False, False, 0)
+        card.pack_start(box, False, False, 0)
+        content.pack_start(card, False, False, 0)
         sections[key] = box
 
-    def clear_section(box):
-        for child in list(box.get_children()):
-            box.remove(child)
-
     def build_job_row(job):
+        """Construit la rangée d'un téléchargement et retourne (widget,
+        refresh). La structure n'est recréée que si la signature change."""
         row = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         row.set_margin_bottom(6)
 
@@ -41,17 +53,12 @@ def build_downloads_page(window):
         )
         row.pack_start(header, False, False, 0)
 
-        total = max(job.total_selected, 1)
         progress = Gtk.ProgressBar()
-        progress.set_fraction(min(1.0, job.completed_count / total))
-        progress.set_text(f"{job.completed_count} / {job.total_selected} pistes")
         progress.set_show_text(True)
         row.pack_start(progress, False, False, 0)
 
-        status_text = job.state.value
-        if job.state == JobState.ERREUR and job.error:
-            status_text += f" — {job.error}"
-        status_label = Gtk.Label(label=status_text, xalign=0)
+        status_label = Gtk.Label(xalign=0)
+        status_label.set_line_wrap(True)
         row.pack_start(status_label, False, False, 0)
 
         buttons = Gtk.Box(spacing=6)
@@ -75,33 +82,66 @@ def build_downloads_page(window):
             open_button.connect("clicked", _open)
             buttons.pack_start(open_button, False, False, 0)
 
+        if job.state not in (JobState.EN_ATTENTE, JobState.TELECHARGEMENT, JobState.ANALYSE):
+            remove_button = Gtk.Button(label="Retirer de la liste")
+            remove_button.connect(
+                "clicked", lambda _b, j=job: window.download_manager.remove_job(j)
+            )
+            buttons.pack_start(remove_button, False, False, 0)
+
+        def refresh():
+            total = max(job.total_selected, 1)
+            completed = job.completed_count
+
+            # Progression de la piste en cours : progress_percent était calculé
+            # par le manager mais jamais affiché, si bien que la barre restait
+            # à zéro pendant toute la durée d'une longue piste.
+            current = None
+            for track_job in job.selected_tracks:
+                if track_job.state == JobState.TELECHARGEMENT:
+                    current = track_job
+                    break
+
+            fraction = completed / total
+            if current is not None and current.progress_percent:
+                in_track = min(1.0, max(0.0, current.progress_percent / 100.0))
+                fraction = min(1.0, (completed + in_track) / total)
+
+            progress.set_fraction(fraction)
+            progress.set_text(f"{completed} / {job.total_selected} pistes")
+
+            text = job.state.value
+            if current is not None and current.progress_percent:
+                text += f" — {current.progress_percent:.0f} %"
+            if job.state == JobState.ERREUR and job.error:
+                text += f" — {job.error}"
+            status_label.set_text(text)
+            return False
+
+        refresh()
         row.show_all()
-        return row
+        return row, refresh
+
+    def row_signature(job):
+        return (job.state,)
+
+    def section_for(job):
+        if job.state in (JobState.TELECHARGEMENT, JobState.ANALYSE):
+            return "active"
+        if job.state == JobState.EN_ATTENTE:
+            return "pending"
+        return "done"
 
     def refresh():
-        for box in sections.values():
-            clear_section(box)
+        entries = [
+            (job.id, section_for(job), row_signature(job), lambda j=job: build_job_row(j))
+            for job in window.download_manager.jobs
+        ]
+        return job_list.sync(entries)
 
-        jobs = window.download_manager.jobs
-        for job in jobs:
-            if job.state in (JobState.TELECHARGEMENT, JobState.ANALYSE):
-                sections["active"].pack_start(build_job_row(job), False, False, 0)
-            elif job.state == JobState.EN_ATTENTE:
-                sections["pending"].pack_start(build_job_row(job), False, False, 0)
-            else:
-                sections["done"].pack_start(build_job_row(job), False, False, 0)
-
-        if not jobs:
-            placeholder = Gtk.Label(label="Aucun téléchargement pour le moment.", xalign=0)
-            placeholder.show()
-            sections["pending"].pack_start(placeholder, False, False, 0)
-
-        return False
+    job_list = SectionedJobList(sections, EMPTY_TEXTS)
 
     window.download_manager.add_listener(refresh)
     refresh()
 
-    scroller = Gtk.ScrolledWindow()
-    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.add(outer)
-    return scroller
+    return outer

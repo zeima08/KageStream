@@ -10,37 +10,46 @@ from gi.repository import Gtk, GLib, GdkPixbuf
 from kagestream.media.ytdlp import analysis_error_message
 from kagestream.providers import find_provider
 from kagestream.metadata.models import FORMAT_CHOICES, PROFILES
+from kagestream.ui.widgets import (
+    action_bar,
+    add_row,
+    bind_enter,
+    button,
+    form_grid,
+    muted_label,
+    page_container,
+    section,
+)
 
 
 def build_music_page(window):
-    page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-    page.set_border_width(12)
-
-    intro = Gtk.Label(
-        label=(
-            "Colle un lien YouTube Music, SoundCloud ou Bandcamp, "
-            "puis clique sur Analyser."
-        ),
-        xalign=0,
+    outer, content = page_container(
+        "Musique",
+        "Colle un lien YouTube Music, SoundCloud ou Bandcamp, puis analyse-le.",
     )
-    intro.set_line_wrap(True)
-    page.pack_start(intro, False, False, 0)
 
-    url_row = Gtk.Box(spacing=8)
+    # --- Source ---------------------------------------------------------
+    source_card = section("Source")
+    url_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
     url_entry = Gtk.Entry()
-    url_entry.set_placeholder_text("Colle une URL YouTube Music, SoundCloud ou Bandcamp...")
+    url_entry.set_placeholder_text("Colle une URL YouTube Music, SoundCloud ou Bandcamp…")
     url_entry.set_hexpand(True)
-    analyze_button = Gtk.Button(label="Analyser")
+    analyze_button = button("Analyser", primary=True,
+                            tooltip="Interroge yt-dlp et affiche l’album et ses pistes.")
     url_row.pack_start(url_entry, True, True, 0)
     url_row.pack_start(analyze_button, False, False, 0)
-    page.pack_start(url_row, False, False, 0)
+    source_card.pack_start(url_row, False, False, 0)
 
-    status_label = Gtk.Label(xalign=0)
-    status_label.set_line_wrap(True)
-    page.pack_start(status_label, False, False, 0)
+    status_label = muted_label("")
+    status_label.set_no_show_all(True)
+    status_label.hide()
+    source_card.pack_start(status_label, False, False, 0)
+    content.pack_start(source_card, False, False, 0)
 
+    # --- Album ----------------------------------------------------------
+    result_card = section("Album")
     result_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
-    page.pack_start(result_box, False, False, 0)
+    result_card.pack_start(result_box, False, False, 0)
 
     cover_image = Gtk.Image()
     cover_image.set_size_request(110, 110)
@@ -50,27 +59,34 @@ def build_music_page(window):
     result_box.pack_start(info_box, True, True, 0)
     title_label = Gtk.Label(xalign=0)
     artist_label = Gtk.Label(xalign=0)
-    meta_label = Gtk.Label(xalign=0)
-    for label in (title_label, artist_label, meta_label):
+    meta_label = muted_label("")
+    for label in (title_label, artist_label):
         label.set_line_wrap(True)
-        info_box.pack_start(label, False, False, 0)
+    info_box.pack_start(title_label, False, False, 0)
+    info_box.pack_start(artist_label, False, False, 0)
+    info_box.pack_start(meta_label, False, False, 0)
 
-    selection_row = Gtk.Box(spacing=8)
-    select_all_button = Gtk.Button(label="Tout cocher")
-    select_none_button = Gtk.Button(label="Tout décocher")
+    selection_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    select_all_button = button("Tout cocher", tooltip="Sélectionne toutes les pistes.")
+    select_none_button = button("Tout décocher", tooltip="Désélectionne toutes les pistes.")
     selection_row.pack_start(select_all_button, False, False, 0)
     selection_row.pack_start(select_none_button, False, False, 0)
-    page.pack_start(selection_row, False, False, 0)
+    result_card.pack_start(selection_row, False, False, 0)
 
     tracks_listbox = Gtk.ListBox()
-    tracks_scroll = Gtk.ScrolledWindow()
-    tracks_scroll.set_min_content_height(220)
-    tracks_scroll.set_vexpand(True)
-    tracks_scroll.add(tracks_listbox)
-    page.pack_start(tracks_scroll, True, True, 0)
+    tracks_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+    # Pas de scroller imbriqué : la page entière défile, la liste s'étend.
+    tracks_listbox.set_size_request(-1, 200)
+    result_card.pack_start(tracks_listbox, False, False, 0)
+    # Masquée tant qu'aucun album n'est analysé : sinon une grande carte vide
+    # occupe la moitié de la page.
+    result_card.set_no_show_all(True)
+    result_card.hide()
+    content.pack_start(result_card, False, False, 0)
 
-    options_grid = Gtk.Grid(column_spacing=14, row_spacing=8)
-    page.pack_start(options_grid, False, False, 0)
+    # --- Destination ----------------------------------------------------
+    options_card = section("Destination")
+    options_grid = form_grid()
 
     profile_combo = Gtk.ComboBoxText()
     for profile_id, profile in PROFILES.items():
@@ -95,21 +111,35 @@ def build_music_page(window):
     )
     folder_chooser.set_filename(default_music_dir)
 
-    options_grid.attach(Gtk.Label(label="Profil", xalign=0), 0, 0, 1, 1)
-    options_grid.attach(profile_combo, 1, 0, 1, 1)
-    options_grid.attach(Gtk.Label(label="Format (profil personnalisé)", xalign=0), 0, 1, 1, 1)
-    options_grid.attach(format_combo, 1, 1, 1, 1)
-    options_grid.attach(Gtk.Label(label="Dossier de destination", xalign=0), 0, 2, 1, 1)
-    options_grid.attach(folder_chooser, 1, 2, 1, 1)
+    add_row(options_grid, 0, "Profil", profile_combo,
+            tooltip="Compatible (MP3 192k), Qualité maximale, Archivage (FLAC) ou Personnalisé.")
+    add_row(options_grid, 1, "Format", format_combo,
+            tooltip="Utilisé uniquement avec le profil « Personnalisé ».")
+    add_row(options_grid, 2, "Dossier", folder_chooser)
 
-    download_button = Gtk.Button(label="▶ Télécharger la sélection")
+    options_card.pack_start(options_grid, False, False, 0)
+    content.pack_start(options_card, False, False, 0)
+
+    # --- Barre d'action -------------------------------------------------
+    bar = action_bar()
+    download_button = button(
+        "Télécharger la sélection", primary=True,
+        tooltip="Ajoute les pistes cochées à la file de téléchargement.",
+    )
     download_button.set_sensitive(False)
-    page.pack_start(download_button, False, False, 0)
+    bar.pack_end(download_button, False, False, 0)
+    outer.pack_start(bar, False, False, 0)
+
+    bind_enter(url_entry, lambda: on_analyze_clicked(None))
 
     state = {"album": None, "rows": []}
 
     def set_status(text):
-        GLib.idle_add(status_label.set_text, text)
+        def apply():
+            status_label.set_text(text)
+            status_label.show()
+            return False
+        GLib.idle_add(apply)
 
     def on_profile_changed(_combo):
         profile_id = profile_combo.get_active_id() or "compatible"
@@ -187,48 +217,56 @@ def build_music_page(window):
             pass
 
     def analyze_worker(url):
-        provider = find_provider(url)
-        if provider is None:
-            set_status("URL non reconnue (YouTube Music, SoundCloud ou Bandcamp attendus).")
-            GLib.idle_add(analyze_button.set_sensitive, True)
-            return
+        try:
+            provider = find_provider(url)
+            if provider is None:
+                set_status("URL non reconnue (YouTube Music, SoundCloud ou Bandcamp attendus).")
+                return
 
-        set_status(f"Analyse {provider.label} en cours...")
-        album, error = provider.analyze(
-            url,
-            window.ytdlp,
-            window.javascript_runtime_name,
-            window.javascript_runtime_path,
-            log_callback=window.log_text,
-            cookies_browser=window.youtube_cookies_browser,
-        )
-        GLib.idle_add(analyze_button.set_sensitive, True)
-
-        if not album:
-            window.log_text(error)
-            title, message = analysis_error_message(error)
-            set_status(f"{title} : {message}")
-            return
-
-        state["album"] = album
-
-        def apply_result():
-            title_label.set_markup(f"<b>{GLib.markup_escape_text(album.title)}</b>")
-            artist_label.set_text(album.artist or "Artiste inconnu")
-            meta_label.set_text(
-                f"{provider.label} — {len(album.tracks)} piste(s)"
-                + (f" — {album.year}" if album.year else "")
+            set_status(f"Analyse {provider.label} en cours...")
+            album, error = provider.analyze(
+                url,
+                window.ytdlp,
+                window.javascript_runtime_name,
+                window.javascript_runtime_path,
+                log_callback=window.log_text,
+                cookies_browser=window.youtube_cookies_browser,
             )
-            cover_image.clear()
-            populate_tracks(album)
-            download_button.set_sensitive(True)
-            return False
 
-        GLib.idle_add(apply_result)
-        set_status(f"{len(album.tracks)} piste(s) trouvée(s).")
+            if not album:
+                window.log_text(error)
+                title, message = analysis_error_message(error)
+                set_status(f"{title} : {message}")
+                return
 
-        if album.artwork_url:
-            threading.Thread(target=load_cover, args=(album.artwork_url,), daemon=True).start()
+            state["album"] = album
+
+            def apply_result():
+                title_label.set_markup(f"<b>{GLib.markup_escape_text(album.title)}</b>")
+                artist_label.set_text(album.artist or "Artiste inconnu")
+                meta_label.set_text(
+                    f"{provider.label} — {len(album.tracks)} piste(s)"
+                    + (f" — {album.year}" if album.year else "")
+                )
+                cover_image.clear()
+                populate_tracks(album)
+                download_button.set_sensitive(True)
+                return False
+
+            GLib.idle_add(apply_result)
+            set_status(f"{len(album.tracks)} piste(s) trouvée(s).")
+
+            if album.artwork_url:
+                threading.Thread(target=load_cover, args=(album.artwork_url,), daemon=True).start()
+
+        except Exception as e:
+            # Sans ce garde-fou, une exception imprévue (ex. métadonnée inattendue
+            # renvoyée par yt-dlp) tuait le thread en silence et laissait le
+            # bouton Analyser désactivé jusqu'au redémarrage.
+            window.log_text(f"[Musique] Erreur pendant l’analyse : {e}")
+            set_status(f"Analyse impossible : {e}")
+        finally:
+            GLib.idle_add(analyze_button.set_sensitive, True)
 
     def on_analyze_clicked(_button):
         url = url_entry.get_text().strip()
@@ -275,7 +313,4 @@ def build_music_page(window):
 
     download_button.connect("clicked", on_download_clicked)
 
-    scroller = Gtk.ScrolledWindow()
-    scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-    scroller.add(page)
-    return scroller
+    return outer
