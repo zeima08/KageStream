@@ -296,9 +296,124 @@ def download_deno_binary(progress_callback=None, timeout=60):
                 pass
 
 
+def extract_zip_safely(archive_path, destination):
+    """Extrait une archive zip en refusant toute sortie du dossier cible.
+
+    `ZipFile.extractall` suit les chemins relatifs contenus dans l'archive :
+    un membre « ../../x » écrirait hors de la destination. Chaque membre est
+    donc résolu puis vérifié avant écriture."""
+    destination_root = os.path.abspath(destination)
+    with zipfile.ZipFile(archive_path) as archive:
+        for member in archive.infolist():
+            target = os.path.abspath(os.path.join(destination_root, member.filename))
+            if target != destination_root and not target.startswith(destination_root + os.sep):
+                raise RuntimeError(f"Archive Streamlink suspecte : {member.filename}")
+            if member.is_dir():
+                os.makedirs(target, exist_ok=True)
+                continue
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with archive.open(member) as source, open(target, "wb") as output:
+                shutil.copyfileobj(source, output)
+
+
+def download_streamlink_portable(progress_callback=None, timeout=300):
+    """Installe Streamlink sous Windows depuis le build portable officiel.
+
+    Il n'existe ni paquet PyPI utilisable (cffi, lxml et pycryptodome n'ont pas
+    de wheels pour le Python embarqué) ni installateur intégré : le dépôt
+    streamlink/windows-builds publie une archive autonome dont l'empreinte
+    SHA-256 accompagne la release."""
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        architecture = "x86_64"
+    elif machine in ("arm64", "aarch64"):
+        architecture = "arm64"
+    else:
+        raise RuntimeError(f"Architecture Streamlink Windows non prise en charge : {machine}.")
+
+    if progress_callback:
+        progress_callback("Recherche du build portable Streamlink…")
+    release = github_latest_release("streamlink/windows-builds", timeout)
+    candidates = [
+        asset for asset in release.get("assets", [])
+        if asset.get("name", "").startswith("streamlink-")
+        and asset.get("name", "").endswith(f"-{architecture}.zip")
+    ]
+    if not candidates:
+        raise RuntimeError("Build portable Streamlink introuvable pour cette architecture.")
+
+    asset = candidates[0]
+    expected_checksum = (asset.get("digest") or "").removeprefix("sha256:")
+    target_dir = user_bin_dir()
+    os.makedirs(target_dir, exist_ok=True)
+    archive_path = os.path.join(target_dir, ".streamlink.download.zip")
+    staging_dir = os.path.join(target_dir, ".streamlink.download")
+
+    try:
+        checksum = download_verified_file(
+            asset.get("browser_download_url", ""),
+            archive_path,
+            expected_checksum,
+            "Streamlink",
+            progress_callback,
+            timeout
+        )
+
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        os.makedirs(staging_dir)
+        extract_zip_safely(archive_path, staging_dir)
+
+        executable = None
+        for root, _dirs, files in os.walk(staging_dir):
+            if "streamlink.exe" in files:
+                executable = os.path.join(root, "streamlink.exe")
+                break
+        if executable is None:
+            raise RuntimeError("streamlink.exe est absent de l'archive téléchargée.")
+
+        validation = subprocess.run(
+            [executable, "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=90
+        )
+        if validation.returncode != 0:
+            raise RuntimeError("Le Streamlink téléchargé ne démarre pas correctement.")
+        version = (
+            validation.stdout.strip().splitlines()[0]
+            if validation.stdout.strip() else "Streamlink"
+        )
+
+        # Le build portable est un ensemble de fichiers solidaires : on copie
+        # l'arborescence entière dans le dossier d'outils de KageStream.
+        portable_root = os.path.dirname(executable)
+        for entry in os.listdir(portable_root):
+            source = os.path.join(portable_root, entry)
+            destination = os.path.join(target_dir, entry)
+            if os.path.isdir(source):
+                shutil.copytree(source, destination, dirs_exist_ok=True)
+            else:
+                shutil.copy2(source, destination)
+
+        return os.path.join(target_dir, "streamlink.exe"), version, checksum
+
+    finally:
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        try:
+            if os.path.exists(archive_path):
+                os.remove(archive_path)
+        except OSError:
+            pass
+
+
 def download_streamlink_appimage(progress_callback=None, timeout=90):
+    if sys.platform == "win32":
+        return download_streamlink_portable(progress_callback, timeout)
     if not sys.platform.startswith("linux"):
-        raise RuntimeError("L’installation directe de Streamlink est disponible sous Linux.")
+        raise RuntimeError(
+            "L’installation directe de Streamlink est disponible sous Linux et Windows."
+        )
 
     machine = platform.machine().lower()
     if machine in ("x86_64", "amd64"):
@@ -375,23 +490,81 @@ def download_streamlink_appimage(progress_callback=None, timeout=90):
                 pass
 
 
-def download_ffmpeg_binaries(progress_callback=None, timeout=120):
-    if not sys.platform.startswith("linux"):
-        raise RuntimeError("L’installation directe de FFmpeg est disponible sous Linux.")
+def ffmpeg_build_platform():
+    """Suffixe de plateforme des assets BtbN et extension d'archive.
 
+    BtbN publie les mêmes archives pour Linux et Windows, avec des noms
+    symétriques (ffmpeg-nX.Y-latest-<plateforme>-gpl-X.Y.{tar.xz,zip})."""
     machine = platform.machine().lower()
-    if machine in ("x86_64", "amd64"):
-        platform_name = "linux64"
-    elif machine in ("arm64", "aarch64"):
-        platform_name = "linuxarm64"
-    else:
+
+    if sys.platform == "win32":
+        if machine in ("x86_64", "amd64"):
+            return "win64", ".zip", ".exe"
+        if machine in ("arm64", "aarch64"):
+            return "winarm64", ".zip", ".exe"
+        raise RuntimeError(f"Architecture FFmpeg Windows non prise en charge : {machine}.")
+
+    if sys.platform.startswith("linux"):
+        if machine in ("x86_64", "amd64"):
+            return "linux64", ".tar.xz", ""
+        if machine in ("arm64", "aarch64"):
+            return "linuxarm64", ".tar.xz", ""
         raise RuntimeError(f"Architecture FFmpeg non prise en charge : {machine}.")
 
+    raise RuntimeError(
+        "L’installation directe de FFmpeg est disponible sous Linux et Windows."
+    )
+
+
+def extract_named_binaries(archive_path, destination_paths):
+    """Extrait des exécutables nommés depuis une archive .zip ou .tar.xz.
+
+    Seuls les fichiers situés dans un dossier « bin » sont retenus ; les noms
+    attendus viennent des clés de `destination_paths` (par exemple
+    `ffmpeg` sous Linux, `ffmpeg.exe` sous Windows).
+    Retourne l'ensemble des noms trouvés."""
+    found = set()
+    path_marker = "/bin/"
+
+    if archive_path.endswith(".zip"):
+        with zipfile.ZipFile(archive_path) as archive:
+            for member in archive.infolist():
+                name = member.filename.replace("\\", "/")
+                base = os.path.basename(name)
+                if member.is_dir() or path_marker not in f"/{name}":
+                    continue
+                for wanted, destination in destination_paths.items():
+                    if base == wanted:
+                        with archive.open(member) as source, open(destination, "wb") as target:
+                            shutil.copyfileobj(source, target)
+                        found.add(wanted)
+    else:
+        with tarfile.open(archive_path, mode="r:xz") as archive:
+            for member in archive.getmembers():
+                base = os.path.basename(member.name)
+                if not member.isfile() or path_marker not in f"/{member.name.replace(chr(92), '/')}":
+                    continue
+                for wanted, destination in destination_paths.items():
+                    if base == wanted:
+                        source = archive.extractfile(member)
+                        if source is None:
+                            continue
+                        with source, open(destination, "wb") as target:
+                            shutil.copyfileobj(source, target)
+                        found.add(wanted)
+
+    return found
+
+
+def download_ffmpeg_binaries(progress_callback=None, timeout=120):
+    platform_name, extension, binary_suffix = ffmpeg_build_platform()
+    is_windows = sys.platform == "win32"
+
     if progress_callback:
-        progress_callback("Recherche du dernier build Linux FFmpeg recommandé…")
+        progress_callback("Recherche du dernier build FFmpeg recommandé…")
     release = github_latest_release("BtbN/FFmpeg-Builds", timeout)
     pattern = re.compile(
-        rf"^ffmpeg-n(\d+(?:\.\d+)+)-latest-{platform_name}-gpl-\1\.tar\.xz$"
+        rf"^ffmpeg-n(\d+(?:\.\d+)+)-latest-{platform_name}-gpl-\1{re.escape(extension)}$"
     )
     candidates = []
     for asset in release.get("assets", []):
@@ -399,15 +572,23 @@ def download_ffmpeg_binaries(progress_callback=None, timeout=120):
         if match:
             candidates.append((version_tuple(match.group(1)), asset))
     if not candidates:
-        raise RuntimeError("Build Linux FFmpeg vérifiable introuvable pour cette architecture.")
+        raise RuntimeError(
+            "Build FFmpeg vérifiable introuvable pour cette architecture."
+        )
 
     _version_key, asset = max(candidates, key=lambda item: item[0])
     expected_checksum = (asset.get("digest") or "").removeprefix("sha256:")
     target_dir = user_bin_dir()
-    archive_path = os.path.join(target_dir, ".ffmpeg.download.tar.xz")
+    archive_path = os.path.join(target_dir, f".ffmpeg.download{extension}")
+
+    # Sous Windows, les exécutables gardent leur extension .exe.
+    binary_names = {
+        "ffmpeg": f"ffmpeg{binary_suffix}",
+        "ffprobe": f"ffprobe{binary_suffix}",
+    }
     temporary_paths = {
-        "ffmpeg": os.path.join(target_dir, ".ffmpeg.download"),
-        "ffprobe": os.path.join(target_dir, ".ffprobe.download"),
+        name: os.path.join(target_dir, f".{name}.download{binary_suffix}")
+        for name in binary_names
     }
     os.makedirs(target_dir, exist_ok=True)
 
@@ -421,28 +602,20 @@ def download_ffmpeg_binaries(progress_callback=None, timeout=120):
             timeout
         )
 
-        found = set()
-        with tarfile.open(archive_path, mode="r:xz") as archive:
-            for member in archive.getmembers():
-                binary_name = os.path.basename(member.name)
-                if (
-                    member.isfile()
-                    and binary_name in temporary_paths
-                    and "/bin/" in member.name.replace("\\", "/")
-                ):
-                    source = archive.extractfile(member)
-                    if source is None:
-                        continue
-                    with source, open(temporary_paths[binary_name], "wb") as destination:
-                        shutil.copyfileobj(source, destination)
-                    os.chmod(temporary_paths[binary_name], 0o755)
-                    found.add(binary_name)
+        # Clé : nom du fichier dans l'archive ; valeur : chemin temporaire.
+        destinations = {
+            binary_names[logical]: temporary_paths[logical]
+            for logical in binary_names
+        }
+        found = extract_named_binaries(archive_path, destinations)
 
-        if found != set(temporary_paths):
+        if found != set(binary_names.values()):
             raise RuntimeError("FFmpeg ou FFprobe est absent de l’archive téléchargée.")
 
         versions = {}
-        for binary_name, temporary_path in temporary_paths.items():
+        for logical, temporary_path in temporary_paths.items():
+            if not is_windows:
+                os.chmod(temporary_path, 0o755)
             validation = subprocess.run(
                 [temporary_path, "-version"],
                 stdout=subprocess.PIPE,
@@ -451,21 +624,18 @@ def download_ffmpeg_binaries(progress_callback=None, timeout=120):
                 timeout=20
             )
             if validation.returncode != 0:
-                raise RuntimeError(f"Le binaire {binary_name} téléchargé ne démarre pas.")
-            versions[binary_name] = (
+                raise RuntimeError(f"Le binaire {logical} téléchargé ne démarre pas.")
+            versions[logical] = (
                 validation.stdout.strip().splitlines()[0]
                 if validation.stdout.strip()
-                else binary_name
+                else logical
             )
 
-        for binary_name, temporary_path in temporary_paths.items():
-            os.replace(temporary_path, os.path.join(target_dir, binary_name))
+        installed_ffmpeg = os.path.join(target_dir, binary_names["ffmpeg"])
+        for logical, temporary_path in temporary_paths.items():
+            os.replace(temporary_path, os.path.join(target_dir, binary_names[logical]))
 
-        return (
-            os.path.join(target_dir, "ffmpeg"),
-            versions["ffmpeg"],
-            checksum
-        )
+        return installed_ffmpeg, versions["ffmpeg"], checksum
 
     finally:
         for path in [archive_path] + list(temporary_paths.values()):

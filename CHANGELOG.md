@@ -40,6 +40,8 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 
 ### Corrigé
 
+- **Installation des outils sous Windows** : `download_ffmpeg_binaries` et `download_streamlink_appimage` refusaient tout ce qui n’était pas Linux, si bien qu’un utilisateur Windows ne pouvait installer ni FFmpeg ni Streamlink — et donc télécharger aucune vidéo YouTube, qui exige FFmpeg pour réunir vidéo et audio. FFmpeg s’installe désormais depuis les builds BtbN (archive `.zip` x64/ARM64, SHA-256 vérifiée) et Streamlink depuis son build portable officiel (`streamlink/windows-builds`, empreinte publiée, extraction protégée contre les chemins traversants). yt-dlp et Deno géraient déjà Windows.
+
 - **Streamlink Windows dans la release** : il est récupéré depuis les builds portables officiels (`streamlink/windows-builds`), avec vérification de l’empreinte SHA-256 publiée. L’installer via pip échouait sur la compilation de `cffi`, `lxml` et `pycryptodome`, faute de wheels pour le Python MSYS2 et de compilateur sur le runner.
 
 - **Empaquetage Linux honnête** : le script copiait dans l’AppImage le `ffmpeg` du poste de build (lié dynamiquement à ses `libav*`) et un `streamlink` qui n’était qu’un script à shebang local. Ces fichiers étaient cassés ailleurs — et, placés en tête du `PATH` par `AppRun`, masquaient ceux du système. Seuls les outils autonomes sont désormais embarqués ; les autres sont installés par KageStream depuis **Outils**, avec vérification.

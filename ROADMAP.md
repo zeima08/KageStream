@@ -184,7 +184,7 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 
 - [x] **Priorité haute** — Script `build-windows.bat` construisant `KageStream.exe` via PyInstaller (environnement MSYS2 MinGW64, seule source viable de PyGObject/GTK3 sous Windows) puis le lançant directement. *(Fait le 2026-09-17, non vérifié faute de machine Windows disponible — à tester réellement avant de le considérer fiable.)*
 - [x] **Priorité haute** — Vérifier réellement le build sur une machine Windows et corriger ce qui plante (typelibs GObject-Introspection, DLL GTK, thème d’icônes). *(Fait le 2026-11-15 : la CI construit `KageStream.exe` sur `windows-latest` à chaque push, vérifie son empreinte et le publie. Quatre causes successives corrigées : nom du paquet PyInstaller, arguments `/D` et `/C` convertis en chemins par le shell MSYS2, `.bat` en LF, chemin d’aide qui renvoyait un succès. Reste à tester le lancement réel de l’exécutable sur une machine Windows — la CI valide la construction, pas l’exécution.)*
-- [ ] **Priorité moyenne** — Publier une AppImage-like (archive ou installateur) qui ne dépende pas d’un MSYS2 déjà installé sur la machine cible.
+- [x] **Priorité moyenne** — Publier une AppImage-like (archive ou installateur) qui ne dépende pas d’un MSYS2 déjà installé sur la machine cible. *(Fait le 2026-11-15 : la release publie un zip contenant l’exécutable autonome et le build portable officiel de Streamlink. Reste à tester le lancement réel sur une machine Windows.)*
 
 ### Publication
 

@@ -97,9 +97,9 @@ GTK et PyGObject doivent être fournis par l’AppImage ou le système. KageStre
 | ----------------------------- | ------------------------------------------------ | --------------------------- |
 | yt-dlp                        | Vidéos et lives YouTube                          | Oui                         |
 | Deno, Node.js, QuickJS ou Bun | Résolution des formats YouTube modernes          | Deno : oui                  |
-| FFmpeg                        | Capture directe, assemblage audio/vidéo et remux | Oui sous Linux x86_64/ARM64 |
+| FFmpeg                        | Capture directe, assemblage audio/vidéo et remux | Oui — Linux et Windows x86_64/ARM64 |
 | FFprobe                       | Analyse des sources et diagnostic                | Oui avec FFmpeg             |
-| Streamlink                    | Extraction des flux des sites compatibles        | Oui sous Linux x86_64/ARM64 |
+| Streamlink                    | Extraction des flux des sites compatibles        | Oui — Linux (AppImage) et Windows (build portable) |
 | aria2c (optionnel)            | Accélère les téléchargements yt-dlp (multi-connexions) | Non — via le gestionnaire de paquets du système |
 
 aria2c n’a pas de binaire autonome officiel pour Linux : installe-le via le gestionnaire de paquets de ta distribution, par exemple `sudo pacman -S aria2` sous Arch, `sudo apt install aria2` sous Debian/Ubuntu ou `sudo dnf install aria2` sous Fedora. KageStream le détecte automatiquement dans le `PATH` une fois installé et l’utilise pour accélérer les téléchargements yt-dlp.
@@ -271,7 +271,7 @@ KageStream utilise automatiquement le user-agent `curl/8.22.0` et l’en-tête `
 - La découpe d’une vidéo se limite à une seule plage début/fin en copie de flux ; KageStream n’a pas vocation à devenir un éditeur vidéo complet.
 - Le mode live YouTube depuis le début dépend des possibilités offertes par YouTube et yt-dlp.
 - Les contenus protégés par DRM ne sont pas pris en charge.
-- L’installation directe de Streamlink et FFmpeg est actuellement destinée à Linux x86_64 et ARM64.
+- L’installation directe de Streamlink et FFmpeg couvre Linux et Windows x86_64/ARM64. Sous Windows, Streamlink s’installe depuis son build portable officiel (empreinte SHA-256 vérifiée) et FFmpeg depuis les builds BtbN.
 - L’AppImage Streamlink nécessite une distribution Linux basée sur glibc.
 - Une interruption brutale du système peut laisser un fichier `.part` ou un TS incomplet, même si KageStream essaie de finaliser proprement les arrêts demandés depuis l’interface.
 - La reconnexion automatique et la programmation d’un enregistrement fonctionnent avec Streamlink, l’IPTV et FFmpeg direct, mais pas encore avec YouTube.
