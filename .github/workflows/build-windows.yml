@@ -41,7 +41,12 @@ jobs:
           # Chemin CI : MSYS2 fournit déjà Python, PyGObject, GTK et
           # PyInstaller — pas de venv ni de pip à fabriquer.
           CI: "1"
-        run: cmd.exe /D /C build-windows.bat
+        run: |
+          # Le runner Windows préinstalle un Python sans PyGObject : on force
+          # celui de MSYS2 en tête du PATH (MSYS2 convertit le chemin pour
+          # cmd.exe, contrairement à une variable MINGW_PREFIX en POSIX).
+          export PATH="/mingw64/bin:$PATH"
+          cmd.exe /D /C build-windows.bat
 
       - name: Vérifier le fichier produit
         shell: pwsh

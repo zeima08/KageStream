@@ -14,6 +14,7 @@ set "BUILD_DIR=%ROOT_DIR%\build"
 echo == KageStream Windows build ==
 echo Dossier : %ROOT_DIR%
 
+
 if not exist "%SOURCE_FILE%" (
     echo Erreur : source introuvable : %SOURCE_FILE%
     exit /B 1
@@ -67,6 +68,17 @@ if errorlevel 1 (
 
 echo Python detecte :
 where python
+
+if defined CI (
+    echo [CI] python utilise :
+    python -c "import sys; print(sys.executable)"
+    python -c "import gi, sys; print('gi:', gi.__file__)"
+    python -m PyInstaller --version
+    if errorlevel 1 (
+        echo [CI] ERREUR : PyInstaller est introuvable pour ce Python.
+        exit /B 1
+    )
+)
 
 rem En integration continue, MSYS2 fournit deja Python, PyGObject, GTK et
 rem PyInstaller : ni pacman, ni venv, ni pip. On va droit au build.
@@ -190,4 +202,4 @@ echo 4. Toujours dans ce terminal, lance :
 echo      pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3
 echo 5. Relance ce script depuis ce meme terminal MSYS2 MinGW64 :
 echo      ./build-windows.bat
-exit /B 0
+exit /B 1

@@ -1,0 +1,8 @@
+# Les scripts Windows doivent rester en CRLF : cmd.exe gère mal les fichiers
+# batch en LF (labels et goto mal interprétés).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Les scripts shell restent en LF.
+*.sh text eol=lf
+AppRun text eol=lf
