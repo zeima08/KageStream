@@ -4,12 +4,12 @@ KageStream est une interface GTK 3 conçue par Zeima pour télécharger des vid�
 
 L’application accepte les liens YouTube, les sites reconnus par Streamlink, les sources MPEG-TS/HLS directement lisibles par FFmpeg, les liens provenant de listes locales M3U, M3U8 et XSPF, ainsi que les liens YouTube Music, SoundCloud et Bandcamp.
 
-L’interface est organisée autour d’une barre latérale (**Capturer**, **Captures**, **Musique**, **YouTube**, **Téléchargements**, **Outils**) qui regroupe les fonctions par usage plutôt que par onglets.
+L’interface est organisée autour d’une barre latérale (**Capturer**, **Captures**, **Musique**, **YouTube**, **Téléchargements**, **Outils**) qui regroupe les fonctions par usage. La barre de titre affiche le statut et les deux horloges ; chaque page porte ses propres actions en bas, et des pastilles signalent les captures ou téléchargements en cours.
 
 ## Fonctionnalités principales
 
 - Détection automatique du moteur approprié : yt-dlp, Streamlink ou FFmpeg.
-- Captures multiples en parallèle : chaque clic sur **Enregistrer** ou **Programmer** ajoute une nouvelle capture sans arrêter les autres — pratique pour plusieurs chaînes TV en même temps. Toutes sont suivies dans l’onglet **Captures**, avec arrêt individuel. La finalisation (vérification, remux, conversion) reste séquentielle pour ne pas saturer le CPU si plusieurs captures se terminent en même temps.
+- Captures multiples en parallèle : chaque clic sur **Enregistrer** ou **Programmer** ajoute une nouvelle capture sans arrêter les autres — pratique pour plusieurs chaînes TV en même temps. Toutes sont suivies dans la page **Captures**, avec arrêt individuel. La finalisation (vérification, remux, conversion) reste séquentielle pour ne pas saturer le CPU si plusieurs captures se terminent en même temps.
 - Découpe rapide d’un enregistrement terminé (bornes début/fin, copie de flux sans réencodage) pour obtenir un seul fichier propre à partager.
 - Téléchargement de musique depuis YouTube Music, SoundCloud et Bandcamp, avec sélection des pistes, profils de format (Compatible, Qualité maximale, Archivage, Personnalisé) et file de téléchargement dédiée.
 - Téléchargement YouTube dans la meilleure qualité vidéo et audio disponibles.
@@ -26,7 +26,7 @@ L’interface est organisée autour d’une barre latérale (**Capturer**, **Cap
 - Recherche des chaînes et groupes contenus dans les listes locales.
 - Diagnostic des dépendances et analyse de la santé du fichier enregistré.
 - Installation directe des dépendances utilisateur sans `sudo` ni gestionnaire de paquets.
-- Horloge locale et horloge de Tokyo affichées en continu dans la fenêtre principale.
+- Horloge locale et horloge de Tokyo affichées dans la barre de titre de la fenêtre.
 
 ## Démarrage
 
@@ -63,7 +63,7 @@ Il n’existe pas de paquet PyGObject officiel sur PyPI : sous Windows, KageStre
 3. `pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3`
 4. Depuis ce même terminal, dans le dossier du projet : `./build-windows.bat`
 
-Le script crée un environnement virtuel (`--system-site-packages` pour hériter de GTK/PyGObject de MSYS2), installe les dépendances Python, construit `dist\KageStream.exe` avec PyInstaller, embarque Streamlink à côté de l’exécutable (aucun installateur direct n’existe pour Streamlink sous Windows, contrairement à Linux), puis **lance directement l’exécutable généré**. FFmpeg, yt-dlp et Deno restent à récupérer depuis l’onglet **Outils** au premier lancement, comme sur les autres plateformes.
+Le script crée un environnement virtuel (`--system-site-packages` pour hériter de GTK/PyGObject de MSYS2), installe les dépendances Python, construit `dist\KageStream.exe` avec PyInstaller, embarque Streamlink à côté de l’exécutable (aucun installateur direct n’existe pour Streamlink sous Windows, contrairement à Linux), puis **lance directement l’exécutable généré**. FFmpeg, yt-dlp et Deno restent à récupérer depuis **Outils → Dépendances et mises à jour** au premier lancement, comme sur les autres plateformes.
 
 Ce chemin de build est plus récent et moins éprouvé que l’AppImage Linux — si la fenêtre ne s’ouvre pas ou plante immédiatement, relance le script depuis le terminal MSYS2 MinGW64 (pour que les bibliothèques GTK soient sur le `PATH`) et vérifie d’abord que `python kagestream.py` fonctionne sans PyInstaller avant de ré-essayer le build.
 
@@ -92,8 +92,8 @@ aria2c n’a pas de binaire autonome officiel pour Linux : installe-le via le ge
 
 Pour installer ce qui manque :
 
-1. Ouvre **Mises à jour**.
-2. Clique sur **Installer tous les éléments manquants**.
+1. Ouvre **Outils → Dépendances**.
+2. Clique sur **Ouvrir les mises à jour**, puis sur **Installer tous les éléments manquants**.
 3. Vérifie la liste proposée puis confirme.
 
 Des boutons séparés permettent aussi de mettre à jour ou réinstaller yt-dlp, Deno, FFmpeg/FFprobe et Streamlink.
@@ -135,9 +135,9 @@ KageStream essaie d’abord Streamlink. Si Streamlink ne reconnaît pas le lien,
 
 Si le flux s’interrompt brutalement en cours d’enregistrement (coupure réseau, source IPTV momentanément indisponible), KageStream retente automatiquement de retrouver la source toutes les 15 secondes pendant 2 minutes avant d’abandonner. Si la source revient, l’enregistrement reprend et les segments récupérés sont fusionnés dans le fichier final ; sinon, l’enregistrement s’arrête et conserve les données déjà capturées.
 
-Chaque clic sur **Enregistrer le flux** démarre une nouvelle capture sans toucher aux autres : plusieurs chaînes peuvent être capturées en même temps, chacune avec son propre statut, sa propre santé et son propre bouton d’arrêt, dans l’onglet **Captures**. Le bouton **Stop** de chaque ligne envoie un `SIGINT`, attend quelques secondes, puis escalade en `SIGTERM` et enfin `SIGKILL` si le processus ne se termine pas de lui-même ; KageStream vérifie ensuite que le fichier TS est bien fermé avant de continuer.
+Chaque clic sur **Enregistrer le flux** démarre une nouvelle capture sans toucher aux autres : plusieurs chaînes peuvent être capturées en même temps, chacune avec son propre statut, sa propre santé et son propre bouton d’arrêt, dans la page **Captures**. Le bouton **Stop** de chaque ligne envoie un `SIGINT`, attend quelques secondes, puis escalade en `SIGTERM` et enfin `SIGKILL` si le processus ne se termine pas de lui-même ; KageStream vérifie ensuite qu’aucun processus ne garde le fichier TS ouvert (par inspection des descripteurs de fichiers sous Linux, par stabilité de la taille ailleurs) avant de continuer.
 
-À la fin d’un enregistrement destiné à MKV ou MP4, la ligne correspondante dans l’onglet **Captures** propose de **vérifier le fichier TS** (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de **remuxer directement**.
+À la fin d’un enregistrement destiné à MKV ou MP4, la ligne correspondante dans la page **Captures** propose de **vérifier le fichier TS** (paquets corrompus, erreurs DTS, timestamps invalides, résumé de l’état général) avant le remux, ou de **remuxer directement**.
 
 La capture est d’abord conservée en MPEG-TS. Pour MKV ou MP4, FFmpeg effectue ensuite un remux sans réencoder la vidéo, en plusieurs paliers de repli : vidéo + audio + sous-titres, puis vidéo + audio seuls si le télétexte ou les sous-titres DVB du multiplex sont incompatibles avec le conteneur, puis un mapping minimal en dernier recours. Le remux corrige aussi automatiquement les flux audio AAC de diffusion DVB dépourvus d’un en-tête ADTS exploitable. Si MP4 refuse certains codecs malgré ces replis, KageStream propose un passage vers MKV et conserve toujours le TS original en cas d’échec.
 
@@ -145,7 +145,7 @@ Cette étape de finalisation (vérification, remux, conversion) est gourmande en
 
 ## Couper une vidéo
 
-Une fois une capture **Terminée** (visible dans l’onglet **Captures**), le bouton **Couper cette vidéo…** permet de retirer un générique en début, une pub en fin, ou tout autre passage inutile, pour n’envoyer qu’un seul fichier propre.
+Une fois une capture **Terminée** (visible dans la page **Captures**), le bouton **Couper cette vidéo…** permet de retirer un générique en début, une pub en fin, ou tout autre passage inutile, pour n’envoyer qu’un seul fichier propre.
 
 1. Clique sur **Couper cette vidéo…**.
 2. Renseigne le **début** et la **fin** à conserver, au format `HH:MM:SS`, `MM:SS` ou en secondes.
@@ -163,16 +163,16 @@ Dans la barre latérale, ouvre **Musique**.
 4. Choisis un profil : **Compatible** (MP3 192 kbps), **Qualité maximale**, **Archivage** (FLAC), ou **Personnalisé** pour choisir toi-même le format parmi MP3, AAC, M4A, Opus, Vorbis, FLAC ou l’original sans conversion.
 5. Choisis le dossier de destination puis clique sur **Télécharger la sélection**.
 
-Chaque piste est enregistrée sous `Artiste/Album/` dans le dossier choisi, avec des noms de fichiers nettoyés. La progression est visible dans l’onglet **Téléchargements**, qui liste les tâches en cours, en attente et terminées, permet d’annuler une tâche active et d’ouvrir directement le dossier une fois le téléchargement terminé.
+Chaque piste est enregistrée sous `Artiste/Album/` dans le dossier choisi, avec des noms de fichiers nettoyés. La progression est visible dans la page **Téléchargements**, qui liste les tâches en cours, en attente et terminées, permet d’annuler une tâche active et d’ouvrir directement le dossier une fois le téléchargement terminé.
 
 ## Programmer un enregistrement
 
-Dans l’onglet **Flux & IPTV**, la section **Programmation d’un enregistrement** permet de définir :
+Dans la page **Capturer**, la section **Programmation** permet de définir :
 
 - une **heure de début** (format `HH:MM` ou `HH:MM:SS`) ;
 - une **heure de fin** dans le même format.
 
-Colle le lien à enregistrer, renseigne les deux heures puis clique sur **Programmer**. KageStream attend automatiquement l’heure de début, lance l’enregistrement, puis l’arrête à l’heure de fin en suivant exactement la même procédure robuste que le bouton **Stop**. La programmation apparaît aussitôt dans l’onglet **Captures**, avec un bouton **Annuler la programmation** sur sa ligne — plusieurs programmations (et captures déjà en cours) peuvent coexister sans s’attendre.
+Colle le lien à enregistrer, renseigne les deux heures puis clique sur **Programmer**. KageStream attend automatiquement l’heure de début, lance l’enregistrement, puis l’arrête à l’heure de fin en suivant exactement la même procédure robuste que le bouton **Stop**. La programmation apparaît aussitôt dans la page **Captures**, avec un bouton **Annuler la programmation** sur sa ligne — plusieurs programmations (et captures déjà en cours) peuvent coexister sans s’attendre.
 
 La programmation fonctionne avec Streamlink, l’IPTV et FFmpeg direct. Si l’heure de fin est antérieure à l’heure de début, KageStream programme l’arrêt le lendemain.
 

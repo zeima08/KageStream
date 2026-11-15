@@ -48,7 +48,7 @@ Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter d
 
 ### Architecture
 
-- [ ] **Priorité haute** — Découper le script principal en modules : interface, détection des sources, YouTube, enregistrement, listes et dépendances. *(Partiellement fait le 2026-08-12 : dépendances, analyse yt-dlp, arrêt des processus, listes M3U/XSPF et utilitaires sont extraits dans le package `kagestream/`. L’interface historique — capture, YouTube, Dépendances/Diagnostic/Logs — reste construite dans un seul `kagestream/app.py` encore volumineux et reste à découper.)*
+- [x] **Priorité haute** — Découper le script principal en modules : interface, détection des sources, YouTube, enregistrement, listes et dépendances. *(Fait le 2026-11-15 : `app.py` ramené de 2 896 à 388 lignes, pages et logique réparties en mixins sous `kagestream/ui/`, commande yt-dlp extraite en fonction pure. Voir aussi le point 8 de l’ordre de travail pour ce qui reste.)*
 - [ ] **Priorité haute** — Centraliser le lancement et l’arrêt des sous-processus. *(Arrêt fait le 2026-08-12 : `kagestream/media/process.py` fournit l’escalade SIGINT/SIGTERM/SIGKILL désormais partagée par la capture et le téléchargement musical. Le lancement des processus — Streamlink, FFmpeg, yt-dlp — reste construit séparément à chaque emplacement.)*
 - [ ] **Priorité haute** — Ajouter une gestion structurée des erreurs avec messages courts dans l’interface et détails dans les journaux.
 - [ ] **Priorité moyenne** — Introduire une constante de version utilisée par l’application, le diagnostic et les paquets.
@@ -63,7 +63,7 @@ Objectif : fiabiliser toutes les fonctions déjà présentes avant d’ajouter d
 
 ### Fiabilité
 
-- [ ] **Priorité haute** — Tester les URL expirées, les coupures réseau et les flux sans audio ou sans vidéo.
+- [x] **Priorité haute** — Tester les URL expirées, les coupures réseau et les flux sans audio ou sans vidéo. *(Partiellement : 2026-11-15 — tests de détection des incidents de flux, de fermeture réelle du fichier TS et du watchdog de finalisation sur un faux FFmpeg bloqué. Les URL expirées et les flux sans audio restent à couvrir.)*
 - [ ] **Priorité haute** — Vérifier les collisions de noms avant chaque téléchargement.
 - [ ] **Priorité haute** — Améliorer la reprise et l’identification des fichiers `.part`.
 - [ ] **Priorité moyenne** — Ajouter une limite configurable au nombre de tentatives de reconnexion. *(Base ajoutée le 2026-07-30 pour Streamlink/FFmpeg direct : fenêtre fixe de 2 minutes, tentative toutes les 15 secondes. Reste à rendre ces valeurs configurables.)*
@@ -130,6 +130,7 @@ Objectif : proposer un niveau de choix proche d’un gestionnaire de télécharg
 
 - [ ] **Priorité haute** — Afficher les formats vidéo avec résolution, codec, fréquence d’images, HDR, taille estimée et débit.
 - [ ] **Priorité haute** — Afficher séparément les pistes audio et leur langue.
+- [ ] **Priorité haute** — Permettre le téléchargement d’une vidéo avec plusieurs pistes audio (multi-langues) en laissant l’utilisateur sélectionner les pistes à inclure.
 - [ ] **Priorité haute** — Ajouter un mode audio uniquement avec M4A, Opus ou MP3 lorsque FFmpeg le permet.
 - [ ] **Priorité moyenne** — Créer des préréglages : compatibilité, meilleure qualité, taille réduite et archivage.
 - [ ] **Priorité moyenne** — Estimer l’espace disque nécessaire avant le téléchargement.
@@ -144,7 +145,12 @@ Objectif : proposer un niveau de choix proche d’un gestionnaire de télécharg
 ### Listes et authentification
 
 - [ ] **Priorité haute** — Gérer les playlists YouTube avec sélection des éléments.
+- [x] **Priorité haute** — Forcer les cookies quand YouTube bloque (« Sign in to confirm you’re not a bot »). *(Fait le 2026-11-15 : le blocage est détecté dans la sortie yt-dlp et l’analyse ou le téléchargement est relancé automatiquement avec les cookies du premier navigateur dont le profil est détecté, même sans sélection dans Outils ; le navigateur retenu devient la session active.)*
 - [ ] **Priorité moyenne** — Gérer les URL de chaînes et les collections prises en charge par yt-dlp.
+
+### Sources
+
+- [x] **Priorité moyenne** — Étendre la détection automatique aux sites de replay gérés par yt-dlp (arte, france.tv, RTS, …). *(Fait le 2026-11-15 : routage automatique vers yt-dlp — y compris pour un lien collé sur la page Capturer, qui bascule alors vers la page YouTube. Les sites ne sont pas cités dans le README.)*
 - [ ] **Priorité moyenne** — Importer facultativement les cookies depuis un navigateur via yt-dlp, sans les copier dans les journaux.
 - [ ] **Priorité moyenne** — Reprendre un téléchargement interrompu lorsque yt-dlp le permet.
 
@@ -177,7 +183,7 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 ### Windows
 
 - [x] **Priorité haute** — Script `build-windows.bat` construisant `KageStream.exe` via PyInstaller (environnement MSYS2 MinGW64, seule source viable de PyGObject/GTK3 sous Windows) puis le lançant directement. *(Fait le 2026-09-17, non vérifié faute de machine Windows disponible — à tester réellement avant de le considérer fiable.)*
-- [ ] **Priorité haute** — Vérifier réellement le build sur une machine Windows et corriger ce qui plante (typelibs GObject-Introspection, DLL GTK, thème d’icônes).
+- [ ] **Priorité haute** — Vérifier réellement le build sur une machine Windows et corriger ce qui plante (typelibs GObject-Introspection, DLL GTK, thème d’icônes). *(Depuis le 2026-11-15, la CI construit l’exécutable sur `windows-latest` à chaque push — les premiers échecs, s’il y en a, fourniront les diagnostics.)*
 - [ ] **Priorité moyenne** — Publier une AppImage-like (archive ou installateur) qui ne dépende pas d’un MSYS2 déjà installé sur la machine cible.
 
 ### Publication
@@ -196,6 +202,16 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 - Les sommes publiées correspondent exactement aux fichiers distribués.
 - La mise à jour de KageStream exige toujours une confirmation explicite.
 
+## Refonte de l’interface
+
+Objectif : rendre l’interface agréable à utiliser, pas seulement fonctionnelle. À mener après le découpage du monolithe `app.py` — une refonte visuelle sur 2 700 lignes construites à la chaîne serait jetée à la première refactorisation.
+
+- [x] **Priorité haute** — Repenser la hiérarchie visuelle : espacement homogène, regroupement des actions par intention, moins de cadres imbriqués. *(Fait le 2026-11-15 — échelle d’espacement unique, cartes de section, actions par page.)*
+- [x] **Priorité haute** — Rafraîchissement visuel général (mode sombre suivi du système, icônes cohérentes, typographie). *(Fait le 2026-11-15 — couleurs dérivées du thème GTK, icônes symboliques avec repli si le thème n’en fournit pas, titres de page et de section hiérarchisés.)*
+- [x] **Priorité moyenne** — Uniformiser les pages Captures / Téléchargements sur un même composant de liste avec rafraîchissement différentiel (plus de reconstruction complète chaque seconde). *(Fait le 2026-11-15 — `ui/job_rows.py`.)*
+- [x] **Priorité moyenne** — Revoir l’ergonomie clavier : mnémoniques, labels associés, Entrée qui valide dans les champs URL. *(Fait le 2026-11-15, plus `Ctrl+1..6` pour les sections.)*
+- [ ] **Priorité basse** — Étudier une maquette GTK 4 (libadwaita) comme cible d’arrivée plutôt qu’une retouche GTK 3 profonde.
+
 ## Version 1.0 — Version stable
 
 Objectif : fournir une base documentée et suffisamment robuste pour une utilisation quotidienne.
@@ -204,7 +220,7 @@ Objectif : fournir une base documentée et suffisamment robuste pour une utilisa
 - [ ] **Priorité haute** — Geler et documenter le format du fichier de configuration.
 - [ ] **Priorité haute** — Tester les migrations de configuration entre versions.
 - [ ] **Priorité haute** — Finaliser le README, le changelog, la feuille de route et le guide de contribution.
-- [ ] **Priorité haute** — Vérifier l’accessibilité au clavier et les libellés GTK.
+- [x] **Priorité haute** — Vérifier l’accessibilité au clavier et les libellés GTK. *(Fait le 2026-11-15 pour les formulaires : mnémoniques et association libellé/champ partout, validation par Entrée, raccourcis de section `Ctrl+1..6`. Reste à vérifier au lecteur d’écran et sur les dialogues secondaires.)*
 - [ ] **Priorité moyenne** — Préparer la traduction de l’interface avec gettext.
 - [ ] **Priorité moyenne** — Ajouter une page **À propos** avec versions, licences et sources des composants.
 - [ ] **Priorité moyenne** — Définir une politique de prise en charge des anciennes versions.
@@ -249,13 +265,17 @@ KageStream n’a pas vocation à :
 
 ## Prochain ordre de travail conseillé
 
-1. Ajouter une version interne et des dossiers de configuration XDG.
-2. ~~Extraire les installateurs de dépendances dans un module testable.~~ **Fait le 2026-08-12** (`kagestream/deps/installer.py` et `kagestream/deps/discovery.py`), voir CHANGELOG 0.7.0. Reste à leur ajouter des tests automatisés.
-3. Extraire la génération des commandes yt-dlp, Streamlink et FFmpeg.
-4. Ajouter les tests des listes M3U/XSPF et des commandes.
-5. Mémoriser les réglages essentiels.
-6. Ajouter une véritable file d’attente.
-7. Autoriser la sélection multiple dans les listes locales.
-8. ~~Ajouter la programmation et la durée maximale.~~ **Fait le 2026-07-30** pour Streamlink/IPTV/FFmpeg direct (voir CHANGELOG 0.6.0).
-9. Développer le sélecteur avancé de formats YouTube.
-10. Automatiser la construction et la vérification des AppImages.
+Ordre consolidé issu de l’audit du code du 2026-11-15 et des demandes associées. Les lots 1 à 7 sont du corrective maintenance ; les trois suivants sont les évolutions demandées.
+
+1. **Correctifs rapides (audit)** : anti-collision des fichiers TS (`capture/manager.py:101`), `try/finally` dans `analyze_worker` (`music_page.py:189`), re-vérification de `schedule_cancelled` après la sortie de boucle (`capture/manager.py:132`), annulation d’un téléchargement en thread au lieu du thread GTK (`download/manager.py:61`), dialog de découpe modal (`captures_page.py:69`). **Fait le 2026-11-15** (avec, en plus, la mesure de durée FFprobe sortie du thread GTK dans le dialog de découpe).
+2. **Forcer les cookies YouTube** quand le blocage « not a bot » est détecté, sans sélection manuelle préalable. **Fait le 2026-11-15** (détection du blocage, navigateurs détectés par profil, relance automatique de l’analyse, des téléchargements YouTube et des téléchargements musicaux, session mémorisée).
+3. **Étendre la détection yt-dlp** aux replays arte / france.tv / RTS — silencieusement, sans mention dans le README. **Fait le 2026-11-15** (routage automatique vers la page YouTube, familles de domaines Arte / france.tv / SRG SSR).
+4. **Réparer la CI** : `GUIStream.exe` → `KageStream.exe` dans le workflow, ne pas lancer la GUI à la fin du build, ajouter un trigger push et un workflow Linux qui exécute les tests. **Fait le 2026-11-15** (workflow Windows corrigé et passé sur MINGW64 comme le README, lancement de la GUI ignoré en CI via la variable `CI`, déclenchement sur push/PR ; nouveau workflow Linux : compileall, import GTK headless, tests unitaires).
+5. **Fiabiliser la finalisation** : timeouts sur les sous-processus de remux/vérification/conversion, handler d’arrêt à la fermeture de l’application pour tuer les sous-processus restants. **Fait le 2026-11-15** (délais garde-fou dimensionnés sur la taille du fichier, groupes de session pour les FFmpeg de finalisation, arrêt groupé parallèle à la fermeture de la fenêtre).
+6. **Performance UI** : rafraîchissement différentiel des pages Captures / Téléchargements, purge des tâches terminées, limite de taille du journal technique. **Fait le 2026-11-15** (registre de rangées partagé `ui/job_rows.py`, boutons Retirer / Vider, journal borné à 5 000 lignes, minuteur de capture auto-extinguible, progression par piste affichée).
+7. **Assainir le build** : appimagetool épinglé avec SHA-256, suppression de l’`AppRun` racine obsolète, `.gitignore` complété (`.venv-windows/`), `requirements.txt` épinglés, suppression de `package-lock.json`. **Fait le 2026-11-15** (appimagetool système ou empreinte obligatoire, fichiers morts supprimés, `requirements-build.txt` séparé, dépendances bornées).
+8. **Découper `app.py`** (2 753 lignes, trois systèmes de jobs) : faire converger `youtube_worker` vers les managers, injecter un contexte d’outils à la place de la fenêtre GTK dans les managers. **Partiellement fait le 2026-11-15** : `app.py` passe à 388 lignes, la logique est répartie en mixins (`ui/page_*.py`, `ui/logic_*.py`) et la commande yt-dlp devient une fonction pure testable (`media/ytdlp_command.py`). Restent la convergence de `youtube_worker` vers les managers et l’injection d’un contexte d’outils à la place de `self.window` dans `CaptureManager`.
+9. **Sélecteur de formats YouTube avancé** avec pistes audio multiples sélectionnables (s’appuie sur le point 8).
+10. **Refonte de l’interface** (voir la section dédiée) — en dernier, sur la base refactorisée. **Fait le 2026-11-15** (barre de titre avec statut et horloges, barre latérale à icônes et pastilles, barres d’action par page, cartes et échelle d’espacement uniques, thème clair/sombre suivi, mnémoniques, Entrée, `Ctrl+1..6`).
+
+Les anciens points restants restent valables par ailleurs : version interne et dossiers XDG, extraction de la génération des commandes, tests M3U/XSPF et des commandes (installateurs déjà extraits le 2026-08-12), mémorisation des réglages, file d’attente, sélection multiple dans les listes locales, automatisation des AppImages.
