@@ -3,11 +3,19 @@ from types import SimpleNamespace
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gtk, Gdk
+
+# Les tests d'interface construisent de vrais widgets et une fenêtre : sans
+# serveur d'affichage (CI sans Xvfb, machine sans session), GTK fait tomber le
+# processus. On les ignore proprement dans ce cas.
+_NO_DISPLAY_REASON = "aucun serveur d'affichage disponible"
+HAS_DISPLAY = Gdk.Display.get_default() is not None
 
 from kagestream.ui.job_rows import SectionedJobList
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class SectionedJobListTests(unittest.TestCase):
     def setUp(self):
         self.sections = {

@@ -2,7 +2,14 @@ import unittest
 
 import gi
 gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
 from gi.repository import Gtk, Gdk
+
+# Les tests d'interface construisent de vrais widgets et une fenêtre : sans
+# serveur d'affichage (CI sans Xvfb, machine sans session), GTK fait tomber le
+# processus. On les ignore proprement dans ce cas.
+_NO_DISPLAY_REASON = "aucun serveur d'affichage disponible"
+HAS_DISPLAY = Gdk.Display.get_default() is not None
 
 from kagestream.ui.widgets import (
     action_bar,
@@ -17,6 +24,7 @@ from kagestream.ui.widgets import (
 )
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class AddRowTests(unittest.TestCase):
     def test_label_is_associated_with_widget(self):
         grid = form_grid()
@@ -50,6 +58,7 @@ class AddRowTests(unittest.TestCase):
         self.assertEqual(grid.child_get_property(entry, "left-attach"), 1)
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class ButtonCallbackTests(unittest.TestCase):
     """Régression : les gestionnaires de la fenêtre attendent un paramètre
     `button`, les lambdas des pages aucun. Le helper doit gérer les deux."""
@@ -89,6 +98,7 @@ class ButtonCallbackTests(unittest.TestCase):
                 button("x", callback).emit("clicked")
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class BindEnterTests(unittest.TestCase):
     def test_activate_triggers_callback(self):
         entry = Gtk.Entry()
@@ -98,6 +108,7 @@ class BindEnterTests(unittest.TestCase):
         self.assertEqual(calls, [1])
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class ButtonTests(unittest.TestCase):
     def test_primary_button_has_suggested_class(self):
         widget = button("Enregistrer", primary=True)
@@ -115,6 +126,7 @@ class ButtonTests(unittest.TestCase):
         self.assertEqual(calls, [1])
 
 
+@unittest.skipUnless(HAS_DISPLAY, _NO_DISPLAY_REASON)
 class ContainerTests(unittest.TestCase):
     def test_page_container_has_title_and_scrolling(self):
         outer, content = page_container("Capturer", "Sous-titre")

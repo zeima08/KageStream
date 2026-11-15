@@ -68,11 +68,15 @@ if errorlevel 1 (
 echo Python detecte :
 where python
 
+rem En integration continue, MSYS2 fournit deja Python, PyGObject, GTK et
+rem PyInstaller : ni pacman, ni venv, ni pip. On va droit au build.
+if defined CI goto :build
+
 echo.
 echo == Mise a jour des paquets MSYS2 utiles si possible ==
 where pacman >nul 2>nul
 if not errorlevel 1 (
-    pacman -S --needed --noconfirm mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3
+    pacman -S --needed --noconfirm mingw-w64-python-pip mingw-w64-pygobject mingw-w64-gtk3
 ) else (
     echo "pacman" introuvable depuis ce terminal : verifie manuellement que GTK3/PyGObject sont a jour.
 )
@@ -106,6 +110,7 @@ if errorlevel 1 (
     exit /B 1
 )
 
+:build
 echo.
 echo == Nettoyage build ==
 if exist "%BUILD_DIR%" rmdir /S /Q "%BUILD_DIR%"
@@ -130,13 +135,18 @@ echo.
 echo == Empaquetage de Streamlink a cote de l'executable ==
 rem KageStream cherche ses outils dans <dossier de l'exe>\bin\ avant le PATH.
 rem Il n'existe pas d'installateur direct Streamlink pour Windows (contrairement a
-rem Linux) : on copie donc celui installe par pip dans le venv.
-if exist "%VENV_DIR%\Scripts\streamlink.exe" (
+rem Linux) : on copie celui disponible (venv, ou installation MSYS2 en CI).
+set "STREAMLINK_EXE="
+if exist "%VENV_DIR%\Scripts\streamlink.exe" set "STREAMLINK_EXE=%VENV_DIR%\Scripts\streamlink.exe"
+if not defined STREAMLINK_EXE (
+    for /f "delims=" %%i in ('where streamlink 2^>nul') do if not defined STREAMLINK_EXE set "STREAMLINK_EXE=%%i"
+)
+if defined STREAMLINK_EXE (
     if not exist "%DIST_DIR%\bin" mkdir "%DIST_DIR%\bin"
-    copy /Y "%VENV_DIR%\Scripts\streamlink.exe" "%DIST_DIR%\bin\streamlink.exe" >nul
+    copy /Y "%STREAMLINK_EXE%" "%DIST_DIR%\bin\streamlink.exe" >nul
     echo Streamlink copie dans %DIST_DIR%\bin\streamlink.exe
 ) else (
-    echo Attention : streamlink.exe introuvable dans le venv, non embarque.
+    echo Attention : streamlink.exe introuvable, non embarque.
 )
 
 echo.
@@ -177,7 +187,7 @@ echo 3. Dans ce terminal, lance :
 echo      pacman -Syu
 echo    Si le terminal se ferme et demande de le relancer, relance-le puis refais pacman -Syu.
 echo 4. Toujours dans ce terminal, lance :
-echo      pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3
+echo      pacman -S --needed mingw-w64-python mingw-w64-python-pip mingw-w64-pygobject mingw-w64-gtk3
 echo 5. Relance ce script depuis ce meme terminal MSYS2 MinGW64 :
 echo      ./build-windows.bat
 exit /B 0

@@ -20,14 +20,17 @@ jobs:
 
       # GTK 3 et PyGObject viennent du système : KageStream n'installe pas
       # les bibliothèques graphiques lui-même (voir README).
-      - name: Installer GTK 3 et PyGObject système
+      # xvfb est nécessaire : plusieurs tests construisent une vraie fenêtre
+      # Gtk.Window, ce qui exige un serveur d'affichage.
+      - name: Installer GTK 3, PyGObject et Xvfb
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             python3 \
             python3-gi \
             python3-gi-cairo \
-            gir1.2-gtk-3.0
+            gir1.2-gtk-3.0 \
+            xvfb
 
       - name: Vérifier la syntaxe de tous les modules
         run: python3 -m compileall -q kagestream kagestream.py
@@ -37,4 +40,4 @@ jobs:
           python3 -c "import kagestream.app; print('import kagestream.app OK')"
 
       - name: Tests unitaires
-        run: python3 -m unittest discover -s tests -v
+        run: xvfb-run -a python3 -m unittest discover -s tests -v

@@ -1,0 +1,45 @@
+name: Tests macOS
+
+# macOS n'est pas une plateforme empaquetée par KageStream (aucun .app
+# distribué) : ce workflow vérifie seulement que le code reste portable et que
+# la logique métier passe ses tests. Les tests qui construisent une fenêtre
+# GTK en sont exclus, faute de serveur d'affichage sur les runners.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Logique métier (macOS)
+    runs-on: macos-latest
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer GTK 3 et PyGObject
+        run: |
+          brew install gtk+3 pygobject3 gobject-introspection
+
+      - name: Vérifier la syntaxe de tous les modules
+        run: python3 -m compileall -q kagestream kagestream.py
+
+      - name: Importer le module d'interface (typelibs GTK)
+        run: |
+          python3 -c "import kagestream.app; print('import kagestream.app OK')"
+
+      - name: Tests sans interface (parseurs, yt-dlp, commandes, processus)
+        run: |
+          python3 -m unittest \
+            tests.test_ytdlp \
+            tests.test_ytdlp_command \
+            tests.test_sources \
+            tests.test_process \
+            tests.test_file_health \
+            -v
