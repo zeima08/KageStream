@@ -40,6 +40,8 @@ Le format s’inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/
 
 ### Corrigé
 
+- **Streamlink Windows dans la release** : il est récupéré depuis les builds portables officiels (`streamlink/windows-builds`), avec vérification de l’empreinte SHA-256 publiée. L’installer via pip échouait sur la compilation de `cffi`, `lxml` et `pycryptodome`, faute de wheels pour le Python MSYS2 et de compilateur sur le runner.
+
 - **Empaquetage Linux honnête** : le script copiait dans l’AppImage le `ffmpeg` du poste de build (lié dynamiquement à ses `libav*`) et un `streamlink` qui n’était qu’un script à shebang local. Ces fichiers étaient cassés ailleurs — et, placés en tête du `PATH` par `AppRun`, masquaient ceux du système. Seuls les outils autonomes sont désormais embarqués ; les autres sont installés par KageStream depuis **Outils**, avec vérification.
 
 - **La vérification de fermeture du fichier TS après un Stop est désormais réelle** : elle se contentait auparavant de tester l’existence du fichier, ce qui renvoyait toujours « fermé » et affichait un message trompeur. Sous Linux, les descripteurs de `/proc` sont inspectés pour savoir si un processus garde encore le fichier ouvert ; ailleurs, la stabilité de la taille et de la date de modification fait foi. Le message affiché distingue maintenant une fermeture confirmée d’un fichier encore détenu.

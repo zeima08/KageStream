@@ -73,14 +73,6 @@ jobs:
             mingw-w64-x86_64-gtk3
             mingw-w64-x86_64-pyinstaller
 
-      # Il n'existe pas d'installateur Streamlink pour Windows : on l'installe
-      # via pip pour que build-windows.bat l'embarque à côté de l'exécutable.
-      - name: Installer Streamlink
-        shell: msys2 {0}
-        run: |
-          export MSYS2_ARG_CONV_EXCL='*'
-          python -m pip install --upgrade --break-system-packages streamlink
-
       - name: Construire KageStream.exe
         shell: msys2 {0}
         env:
@@ -96,6 +88,36 @@ jobs:
             ls -la dist 2>/dev/null || true
             exit 1
           }
+
+      # Il n'existe pas d'installateur Streamlink intégré à KageStream sous
+      # Windows, et l'installer via pip exigerait de compiler cffi, lxml et
+      # pycryptodome (aucune wheel pour le Python MSYS2). On récupère donc le
+      # build portable officiel, dont l'empreinte SHA-256 est publiée.
+      - name: Récupérer Streamlink portable (vérifié)
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod "https://api.github.com/repos/streamlink/windows-builds/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -like "*-x86_64.zip" } | Select-Object -First 1
+          if (-not $asset) { throw "Aucune archive Windows portable dans la release Streamlink" }
+
+          $zip = "streamlink-portable.zip"
+          Invoke-WebRequest $asset.browser_download_url -OutFile $zip
+
+          $expected = ($asset.digest -replace '^sha256:', '').ToUpper()
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToUpper()
+          if (-not $expected) { throw "La release Streamlink ne publie pas de SHA-256" }
+          if ($actual -ne $expected) {
+            throw "Empreinte Streamlink incorrecte : attendu $expected, obtenu $actual"
+          }
+          Write-Host "Streamlink $($release.tag_name) vérifié : $actual"
+
+          Expand-Archive $zip -DestinationPath streamlink-portable
+          $exe = Get-ChildItem streamlink-portable -Recurse -Filter "streamlink.exe" |
+            Select-Object -First 1
+          if (-not $exe) { throw "streamlink.exe introuvable dans l'archive portable" }
+          New-Item -ItemType Directory -Force -Path "dist/bin" | Out-Null
+          Copy-Item -Recurse -Force "$($exe.Directory.FullName)\*" "dist/bin/"
+          Get-ChildItem "dist/bin" | Select-Object -First 5 Name
 
       - name: Empaqueter avec Streamlink
         shell: pwsh
