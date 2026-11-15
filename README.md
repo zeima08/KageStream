@@ -30,6 +30,20 @@ L’interface est organisée autour d’une barre latérale (**Capturer**, **Cap
 
 ## Démarrage
 
+### Depuis une version publiée
+
+Les versions publiées se téléchargent depuis la page **Releases** du dépôt, sans compte ni compilation :
+
+- `KageStream-v0.8.0-x86_64.AppImage` pour Linux ;
+- `KageStream-v0.8.0-Windows-x86_64.zip` pour Windows (l’exécutable et Streamlink) ;
+- `SHA256SUMS` avec les sommes des deux fichiers, à vérifier avant usage :
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+L’AppImage n’embarque ni FFmpeg ni Streamlink : KageStream les installe lui-même, avec vérification SHA-256, depuis **Outils → Dépendances** au premier lancement. Une compilation locale de l’AppImage ne peut embarquer ces outils que s’ils sont autonomes sur la machine de build — un binaire lié aux bibliothèques du système serait cassé ailleurs.
+
 ### Avec une AppImage
 
 Rends l’AppImage exécutable puis lance-la :
@@ -39,7 +53,7 @@ chmod +x KageStream-x86_64.AppImage
 ./KageStream-x86_64.AppImage
 ```
 
-Une AppImage étant montée en lecture seule, les dépendances téléchargées par KageStream sont conservées dans un dossier utilisateur persistant :
+Une AppImage étant montée en lecture seule, les dépendances téléchargées par KageStream (FFmpeg, Streamlink, yt-dlp, Deno) sont conservées dans un dossier utilisateur persistant :
 
 ```text
 ~/.local/share/KageStream/bin

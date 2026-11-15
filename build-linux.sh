@@ -223,7 +223,11 @@ if check_system_deps; then
     echo "Dépendances système OK."
 else
     echo ""
-    read -r -p "Des dépendances manquent. Tenter l'installation automatique ? [o/N] " answer
+    if [ -n "${CI:-}" ] || [ "${KAGESTREAM_ASSUME_YES:-}" = "1" ]; then
+        answer="o"
+    else
+        read -r -p "Des dépendances manquent. Tenter l'installation automatique ? [o/N] " answer
+    fi
     case "$answer" in
         o|O|oui|Oui|OUI|y|Y|yes|YES)
             install_system_deps
@@ -281,17 +285,40 @@ fi
 
 echo "== Copie des binaires dans AppDir =="
 cp "$ROOT_DIR/dist/$APP_NAME" "$APPDIR/usr/bin/$APP_NAME"
-cp "$(command -v ffmpeg)" "$APPDIR/usr/bin/ffmpeg"
-cp "$(command -v ffprobe)" "$APPDIR/usr/bin/ffprobe"
 
-if command_exists streamlink; then
-    cp "$(command -v streamlink)" "$APPDIR/usr/bin/streamlink" || true
-elif [ -f "$VENV_DIR/bin/streamlink" ]; then
-    cp "$VENV_DIR/bin/streamlink" "$APPDIR/usr/bin/streamlink"
-else
-    echo "Erreur : Streamlink introuvable après installation Python."
-    exit 1
-fi
+# On n'embarque un outil que s'il est réellement portable pour la machine
+# cible. Un binaire lié dynamiquement aux bibliothèques du poste de build
+# (ffmpeg → libav*) ou un script Python à shebang local (streamlink du venv)
+# serait cassé chez l'utilisateur — et, pire, masquerait celui du système
+# puisque AppRun place usr/bin en tête du PATH. KageStream sait installer
+# ces deux outils de façon vérifiée depuis Outils.
+copy_if_portable() {
+    local source="$1" name="$2" kind
+    if [ -z "$source" ] || [ ! -f "$source" ]; then
+        echo "  $name : introuvable, non embarqué (installable depuis Outils)"
+        return 0
+    fi
+    kind="$(file -b "$source" 2>/dev/null || true)"
+    case "$kind" in
+        *ELF*dynamically\ linked*)
+            echo "  $name : binaire lié dynamiquement, non embarqué (installable depuis Outils)"
+            return 0
+            ;;
+        *ELF*)
+            cp "$source" "$APPDIR/usr/bin/$name"
+            echo "  $name : embarqué (autonome)"
+            return 0
+            ;;
+        *)
+            echo "  $name : $kind — non portable, non embarqué (installable depuis Outils)"
+            return 0
+            ;;
+    esac
+}
+
+copy_if_portable "$(command -v ffmpeg 2>/dev/null)" ffmpeg
+copy_if_portable "$(command -v ffprobe 2>/dev/null)" ffprobe
+copy_if_portable "$(command -v streamlink 2>/dev/null || echo "$VENV_DIR/bin/streamlink")" streamlink
 
 echo "== Génération AppRun =="
 write_apprun
@@ -307,42 +334,48 @@ else
     exit 1
 fi
 
-echo "== Téléchargement appimagetool si absent =="
-if [ ! -f "$APPIMAGETOOL" ]; then
-    if command -v appimagetool >/dev/null 2>&1; then
-        # Un appimagetool fourni par la distribution est suivi par ses mises à
-        # jour : rien à télécharger ni à vérifier ici.
-        APPIMAGETOOL="$(command -v appimagetool)"
-        echo "Utilisation de l'appimagetool du système : $APPIMAGETOOL"
-    else
-        # L'appimagetool téléchargé est EXÉCUTÉ : il doit être vérifié comme les
-        # autres outils que KageStream installe. Renseigne son empreinte
-        # attendue dans KAGESTREAM_APPIMAGETOOL_SHA256, ou installe le paquet
-        # appimagetool de ta distribution.
-        EXPECTED_SHA="${KAGESTREAM_APPIMAGETOOL_SHA256:-}"
-        if [ -z "$EXPECTED_SHA" ]; then
-            # L'exécutable autonome est déjà construit : on s'arrête ici sans
-            # produire l'AppImage plutôt que d'exécuter un outil non vérifié.
-            echo "AVERTISSEMENT : appimagetool introuvable et aucune empreinte SHA-256 fournie." >&2
-            echo "  L'exécutable autonome a bien été produit : $ROOT_DIR/dist/$APP_NAME" >&2
-            echo "  Pour créer l'AppImage : installe le paquet appimagetool de ta distribution," >&2
-            echo "  ou exporte KAGESTREAM_APPIMAGETOOL_SHA256=<sha256 attendu> puis relance." >&2
-            exit 0
-        fi
-        TMP_TOOL="$(mktemp "${TMPDIR:-/tmp}/appimagetool.XXXXXX")"
-        wget -O "$TMP_TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-        ACTUAL_SHA="$(sha256sum "$TMP_TOOL" | awk '{print $1}')"
-        if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
-            rm -f "$TMP_TOOL"
-            echo "ERREUR : empreinte SHA-256 d'appimagetool incorrecte." >&2
-            echo "  attendu : $EXPECTED_SHA" >&2
-            echo "  obtenu  : $ACTUAL_SHA" >&2
-            exit 1
-        fi
-        mv "$TMP_TOOL" "$APPIMAGETOOL"
-        chmod +x "$APPIMAGETOOL"
-        echo "appimagetool vérifié (SHA-256) et installé."
+echo "== appimagetool : version épinglée et vérifiée =="
+# L'appimagetool téléchargé est EXÉCUTÉ : il est épinglé à une version précise
+# et vérifié par SHA-256 à chaque utilisation, y compris s'il est déjà présent
+# sur le disque (un fichier en cache n'est jamais exécuté sans contrôle).
+APPIMAGETOOL_VERSION="${KAGESTREAM_APPIMAGETOOL_VERSION:-1.9.1}"
+APPIMAGETOOL_SHA256="${KAGESTREAM_APPIMAGETOOL_SHA256:-ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0}"
+
+verify_appimagetool() {
+    [ -f "$1" ] || return 1
+    local actual
+    actual="$(sha256sum "$1" | awk '{print $1}')"
+    [ "$actual" = "$APPIMAGETOOL_SHA256" ]
+}
+
+if command -v appimagetool >/dev/null 2>&1; then
+    # Un appimagetool fourni par la distribution est suivi par ses mises à
+    # jour : rien à télécharger ni à vérifier ici.
+    APPIMAGETOOL="$(command -v appimagetool)"
+    echo "Utilisation de l'appimagetool du système : $APPIMAGETOOL"
+elif verify_appimagetool "$APPIMAGETOOL"; then
+    echo "appimagetool déjà présent et vérifié (SHA-256)."
+else
+    TMP_TOOL="$(mktemp "${TMPDIR:-/tmp}/appimagetool.XXXXXX")"
+    echo "Téléchargement d'appimagetool $APPIMAGETOOL_VERSION..."
+    if ! wget -O "$TMP_TOOL" \
+        "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"; then
+        rm -f "$TMP_TOOL"
+        echo "ERREUR : téléchargement d'appimagetool impossible." >&2
+        echo "  Vérifie ta connexion, ou installe le paquet appimagetool de ta distribution." >&2
+        exit 1
     fi
+    ACTUAL_SHA="$(sha256sum "$TMP_TOOL" | awk '{print $1}')"
+    if [ "$ACTUAL_SHA" != "$APPIMAGETOOL_SHA256" ]; then
+        rm -f "$TMP_TOOL"
+        echo "ERREUR : empreinte SHA-256 d'appimagetool incorrecte." >&2
+        echo "  attendu : $APPIMAGETOOL_SHA256" >&2
+        echo "  obtenu  : $ACTUAL_SHA" >&2
+        exit 1
+    fi
+    mv "$TMP_TOOL" "$APPIMAGETOOL"
+    chmod +x "$APPIMAGETOOL"
+    echo "appimagetool $APPIMAGETOOL_VERSION vérifié et installé."
 fi
 
 echo "== Création AppImage =="

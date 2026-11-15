@@ -1,0 +1,139 @@
+name: Release
+
+# Déclenché par un tag de version : « git tag v0.8.0 && git push --tags ».
+# Construit l'AppImage Linux et l'exécutable Windows, vérifie leurs sommes et
+# les attache à une release téléchargeable sans compte GitHub.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: AppImage Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer les dépendances de build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3 python3-pip python3-venv python3-gi gir1.2-gtk-3.0 \
+            ffmpeg wget patchelf desktop-file-utils libfuse2
+
+      - name: Construire l'AppImage
+        env:
+          # CI : le script installe lui-même ce qui manque, sans question.
+          CI: "1"
+          # appimagetool est lui-même une AppImage : les runners n'ont pas
+          # FUSE, on l'extrait puis l'exécute.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: bash build-linux.sh
+
+      - name: Vérifier et renommer avec la version
+        run: |
+          test -f KageStream-x86_64.AppImage || {
+            echo "::error::build-linux.sh n'a produit aucune AppImage"
+            ls -la
+            exit 1
+          }
+          mv KageStream-x86_64.AppImage "KageStream-${GITHUB_REF_NAME}-x86_64.AppImage"
+          ls -lh KageStream-*.AppImage
+          sha256sum KageStream-*.AppImage
+
+      - name: Publier l'artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: KageStream-*-x86_64.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Exécutable Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Récupérer les sources
+        uses: actions/checkout@v4
+
+      - name: Installer Python, GTK 3, PyGObject, PyInstaller et pip
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-python-gobject
+            mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-pyinstaller
+
+      # Il n'existe pas d'installateur Streamlink pour Windows : on l'installe
+      # via pip pour que build-windows.bat l'embarque à côté de l'exécutable.
+      - name: Installer Streamlink
+        shell: msys2 {0}
+        run: |
+          export MSYS2_ARG_CONV_EXCL='*'
+          python -m pip install --upgrade --break-system-packages streamlink
+
+      - name: Construire KageStream.exe
+        shell: msys2 {0}
+        env:
+          CI: "1"
+        run: |
+          # MSYS2 convertit les arguments commençant par « / » en chemins :
+          # sans cette neutralisation, cmd ne reçoit pas ses options.
+          export MSYS2_ARG_CONV_EXCL='*'
+          export PATH="/mingw64/bin:$PATH"
+          cmd.exe /D /C build-windows.bat
+          test -f dist/KageStream.exe || {
+            echo "::error::build-windows.bat n'a produit aucun exécutable"
+            ls -la dist 2>/dev/null || true
+            exit 1
+          }
+
+      - name: Empaqueter avec Streamlink
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          Compress-Archive -Path dist/* -DestinationPath "KageStream-$tag-Windows-x86_64.zip"
+          Get-Item "KageStream-$tag-Windows-x86_64.zip" | Format-List Name, Length
+          Get-FileHash "KageStream-$tag-Windows-x86_64.zip" -Algorithm SHA256
+
+      - name: Publier l'artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: KageStream-*-Windows-x86_64.zip
+          if-no-files-found: error
+
+  release:
+    name: Publier la release
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer les artefacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Générer les sommes SHA-256
+        run: |
+          ls -lh
+          sha256sum KageStream-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Créer la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            KageStream-*
+            SHA256SUMS
+          generate_release_notes: true
+          fail_on_unmatched_files: true

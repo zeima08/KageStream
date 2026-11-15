@@ -174,9 +174,9 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 
 ### AppImage
 
-- [ ] **Priorité haute** — Construire des AppImages reproductibles pour Linux x86_64 et ARM64.
+- [ ] **Priorité haute** — Construire des AppImages reproductibles pour Linux x86_64 et ARM64. *(x86_64 est construit automatiquement sur tag depuis le 2026-11-15 ; ARM64 reste à faire, et la reproductibilité bit-à-bit n’est pas garantie : `appimagetool` est épinglé, mais pas les paquets Python installés à la volée.)*
 - [ ] **Priorité haute** — Inclure GTK, PyGObject et les bibliothèques indispensables au démarrage.
-- [ ] **Priorité haute** — Publier les sommes SHA-256 de chaque AppImage.
+- [x] **Priorité haute** — Publier les sommes SHA-256 de chaque AppImage. *(Fait le 2026-11-15 : un fichier `SHA256SUMS` accompagne chaque release.)*
 - [ ] **Priorité moyenne** — Ajouter un fichier `.desktop`, une icône et les catégories de menu appropriées.
 - [ ] **Priorité moyenne** — Tester le fonctionnement avec et sans FUSE grâce au mode extraction-exécution.
 
@@ -188,8 +188,8 @@ Objectif : rendre les versions faciles à construire, vérifier et distribuer.
 
 ### Publication
 
-- [ ] **Priorité haute** — Automatiser les tests et la construction à chaque version.
-- [ ] **Priorité haute** — Générer les notes de version depuis le changelog validé.
+- [x] **Priorité haute** — Automatiser les tests et la construction à chaque version. *(Fait le 2026-11-15 : tests à chaque push, AppImage et exécutable Windows construits sur tag, release publiée automatiquement.)*
+- [x] **Priorité haute** — Générer les notes de version depuis le changelog validé. *(Partiellement fait le 2026-11-15 : GitHub génère les notes depuis les commits ; les tirer du CHANGELOG reste à faire.)*
 - [ ] **Priorité haute** — Afficher la version de KageStream dans l’interface et le diagnostic.
 - [ ] **Priorité moyenne** — Vérifier les nouvelles versions de KageStream depuis une source configurable.
 - [ ] **Priorité moyenne** — Télécharger une nouvelle AppImage sans remplacer automatiquement la version en cours.
