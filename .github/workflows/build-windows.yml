@@ -42,11 +42,24 @@ jobs:
           # PyInstaller — pas de venv ni de pip à fabriquer.
           CI: "1"
         run: |
+          # MSYS2 convertit les arguments commençant par « / » en chemins
+          # Windows : sans cette neutralisation, « cmd.exe /D /C » arrive
+          # méconnaissable et cmd ne lance jamais le script batch (étape
+          # « réussie » en une seconde, sans exécutable produit).
+          export MSYS2_ARG_CONV_EXCL='*'
           # Le runner Windows préinstalle un Python sans PyGObject : on force
-          # celui de MSYS2 en tête du PATH (MSYS2 convertit le chemin pour
-          # cmd.exe, contrairement à une variable MINGW_PREFIX en POSIX).
+          # celui de MSYS2 en tête du PATH.
           export PATH="/mingw64/bin:$PATH"
+          # Conversion désactivée juste au-dessus : les options /D et /C
+          # arrivent intactes à cmd.exe.
           cmd.exe /D /C build-windows.bat
+          # Filet de sécurité : échouer ici, avec le log du script sous les
+          # yeux, plutôt que sur l'étape suivante.
+          test -f dist/KageStream.exe || {
+            echo "::error::build-windows.bat n'a produit aucun exécutable"
+            ls -la dist 2>/dev/null || true
+            exit 1
+          }
 
       - name: Vérifier le fichier produit
         shell: pwsh
