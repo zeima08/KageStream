@@ -21,19 +21,19 @@ jobs:
       # MinGW64 (et non UCRT64) : c'est l'environnement documenté dans le
       # README et dans build-windows.bat — la CI doit tester le même chemin
       # que celui indiqué aux utilisateurs.
-      # Noms de paquets MSYS2 actuels : le préfixe « x86_64 » a disparu des
-      # noms (les paquets sont partagés entre environnements) et PyInstaller
-      # s'appelle mingw-w64-pyinstaller, pas python-pyinstaller.
+      # Noms pacman vérifiés un par un sur packages.msys2.org : le seul écart
+      # historique était PyInstaller, packagé « pyinstaller » et non
+      # « python-pyinstaller ».
       - name: Installer Python, GTK 3, PyGObject et PyInstaller
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
           install: >-
-            mingw-w64-python
-            mingw-w64-pygobject
-            mingw-w64-gtk3
-            mingw-w64-pyinstaller
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-gobject
+            mingw-w64-x86_64-gtk3
+            mingw-w64-x86_64-pyinstaller
 
       - name: Construire KageStream.exe
         shell: msys2 {0}

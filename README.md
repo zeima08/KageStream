@@ -60,7 +60,7 @@ Il n’existe pas de paquet PyGObject officiel sur PyPI : sous Windows, KageStre
 
 1. Installe MSYS2, puis ouvre le terminal **MSYS2 MinGW64** (pas « MSYS2 MSYS »).
 2. `pacman -Syu` (relance le terminal si demandé, puis refais `pacman -Syu`).
-3. `pacman -S --needed mingw-w64-python mingw-w64-python-pip mingw-w64-pygobject mingw-w64-gtk3`
+3. `pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3`
 4. Depuis ce même terminal, dans le dossier du projet : `./build-windows.bat`
 
 Le script crée un environnement virtuel (`--system-site-packages` pour hériter de GTK/PyGObject de MSYS2), installe les dépendances Python, construit `dist\KageStream.exe` avec PyInstaller, embarque Streamlink à côté de l’exécutable (aucun installateur direct n’existe pour Streamlink sous Windows, contrairement à Linux), puis **lance directement l’exécutable généré**. FFmpeg, yt-dlp et Deno restent à récupérer depuis **Outils → Dépendances et mises à jour** au premier lancement, comme sur les autres plateformes.

@@ -76,7 +76,7 @@ echo.
 echo == Mise a jour des paquets MSYS2 utiles si possible ==
 where pacman >nul 2>nul
 if not errorlevel 1 (
-    pacman -S --needed --noconfirm mingw-w64-python-pip mingw-w64-pygobject mingw-w64-gtk3
+    pacman -S --needed --noconfirm mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3
 ) else (
     echo "pacman" introuvable depuis ce terminal : verifie manuellement que GTK3/PyGObject sont a jour.
 )
@@ -187,7 +187,7 @@ echo 3. Dans ce terminal, lance :
 echo      pacman -Syu
 echo    Si le terminal se ferme et demande de le relancer, relance-le puis refais pacman -Syu.
 echo 4. Toujours dans ce terminal, lance :
-echo      pacman -S --needed mingw-w64-python mingw-w64-python-pip mingw-w64-pygobject mingw-w64-gtk3
+echo      pacman -S --needed mingw-w64-x86_64-python mingw-w64-x86_64-python-pip mingw-w64-x86_64-python-gobject mingw-w64-x86_64-gtk3
 echo 5. Relance ce script depuis ce meme terminal MSYS2 MinGW64 :
 echo      ./build-windows.bat
 exit /B 0
