@@ -1,2 +1,4 @@
-streamlink
-pyinstaller
+# Dépendances d'exécution.
+# PyGObject, GTK 3 et leurs typelibs ne sont pas ici : ils viennent du système
+# (ou de l'AppImage), aucun paquet officiel n'existant sur PyPI.
+streamlink>=7,<9

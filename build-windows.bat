@@ -92,6 +92,8 @@ if errorlevel 1 exit /B 1
 
 python -m pip install --upgrade -r "%ROOT_DIR%\requirements.txt"
 if errorlevel 1 exit /B 1
+python -m pip install --upgrade -r "%ROOT_DIR%\requirements-build.txt"
+if errorlevel 1 exit /B 1
 
 echo.
 echo == Verification GTK/PyGObject dans le venv ==
@@ -152,6 +154,13 @@ echo lancement ^(telechargement direct integre a KageStream^).
 echo Si la fenetre ne s'ouvre pas ou plante immediatement, relance ce script depuis
 echo le terminal "MSYS2 MinGW64" pour que les bibliotheques GTK soient sur le PATH.
 echo.
+
+rem Les runners d'integration continue definissent la variable CI : lancer la GUI
+rem y bloquerait le job jusqu'au timeout car il n'y a pas de session interactive.
+if defined CI (
+    echo Mode CI detecte : lancement direct de l'application ignore.
+    exit /B 0
+)
 
 "%DIST_DIR%\%APP_NAME%.exe"
 set "RUN_RESULT=%ERRORLEVEL%"

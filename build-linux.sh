@@ -250,6 +250,7 @@ source "$VENV_DIR/bin/activate"
 
 python -m pip install --upgrade pip wheel setuptools
 python -m pip install --upgrade -r "$ROOT_DIR/requirements.txt"
+python -m pip install --upgrade -r "$ROOT_DIR/requirements-build.txt"
 
 echo "== Vérification Python/GTK dans le venv =="
 if ! python -c "import gi; gi.require_version('Gtk','3.0')" >/dev/null 2>&1; then
@@ -308,8 +309,40 @@ fi
 
 echo "== Téléchargement appimagetool si absent =="
 if [ ! -f "$APPIMAGETOOL" ]; then
-    wget -O "$APPIMAGETOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x "$APPIMAGETOOL"
+    if command -v appimagetool >/dev/null 2>&1; then
+        # Un appimagetool fourni par la distribution est suivi par ses mises à
+        # jour : rien à télécharger ni à vérifier ici.
+        APPIMAGETOOL="$(command -v appimagetool)"
+        echo "Utilisation de l'appimagetool du système : $APPIMAGETOOL"
+    else
+        # L'appimagetool téléchargé est EXÉCUTÉ : il doit être vérifié comme les
+        # autres outils que KageStream installe. Renseigne son empreinte
+        # attendue dans KAGESTREAM_APPIMAGETOOL_SHA256, ou installe le paquet
+        # appimagetool de ta distribution.
+        EXPECTED_SHA="${KAGESTREAM_APPIMAGETOOL_SHA256:-}"
+        if [ -z "$EXPECTED_SHA" ]; then
+            # L'exécutable autonome est déjà construit : on s'arrête ici sans
+            # produire l'AppImage plutôt que d'exécuter un outil non vérifié.
+            echo "AVERTISSEMENT : appimagetool introuvable et aucune empreinte SHA-256 fournie." >&2
+            echo "  L'exécutable autonome a bien été produit : $ROOT_DIR/dist/$APP_NAME" >&2
+            echo "  Pour créer l'AppImage : installe le paquet appimagetool de ta distribution," >&2
+            echo "  ou exporte KAGESTREAM_APPIMAGETOOL_SHA256=<sha256 attendu> puis relance." >&2
+            exit 0
+        fi
+        TMP_TOOL="$(mktemp "${TMPDIR:-/tmp}/appimagetool.XXXXXX")"
+        wget -O "$TMP_TOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+        ACTUAL_SHA="$(sha256sum "$TMP_TOOL" | awk '{print $1}')"
+        if [ "$ACTUAL_SHA" != "$EXPECTED_SHA" ]; then
+            rm -f "$TMP_TOOL"
+            echo "ERREUR : empreinte SHA-256 d'appimagetool incorrecte." >&2
+            echo "  attendu : $EXPECTED_SHA" >&2
+            echo "  obtenu  : $ACTUAL_SHA" >&2
+            exit 1
+        fi
+        mv "$TMP_TOOL" "$APPIMAGETOOL"
+        chmod +x "$APPIMAGETOOL"
+        echo "appimagetool vérifié (SHA-256) et installé."
+    fi
 fi
 
 echo "== Création AppImage =="

@@ -13,6 +13,7 @@ AppDir/
 
 .venv/
 venv/
+.venv-windows/
 .env
 
 # Tests
@@ -22,6 +23,14 @@ venv/
 .vscode/
 
 *.log
+
+# Listes de lecture et contenus utilisateur : elles restent locales
+*.m3u
+*.m3u8
+*.xspf
+
+# Outils locaux (dossier de l'assistant, jamais publié)
+.zcode/
 
 *.bak
 *.swp

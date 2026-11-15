@@ -33,7 +33,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX peut altérer le chargement des bibliothèques GTK et provoque des
+    # faux positifs d'antivirus sous Windows : désactivé.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,

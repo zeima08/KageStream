@@ -1,0 +1,3 @@
+# Dépendances de construction uniquement, installées par build-linux.sh,
+# build-windows.bat et la CI — jamais nécessaires pour lancer KageStream.
+pyinstaller>=6,<7
